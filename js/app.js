@@ -1,5 +1,5 @@
-import { api, isDemo } from './store.js?v=1792499954';
-import * as L from './logic.js?v=1792499954';
+import { api, isDemo } from './store.js?v=1792500279';
+import * as L from './logic.js?v=1792500279';
 
 const root = document.getElementById('root');
 const dlg = document.getElementById('dlg');
@@ -114,7 +114,7 @@ function renderLogin() {
     return;
   }
   if (S.me && S.me.denied) {
-    root.innerHTML = box(`<h1>بانتظار الإضافة</h1><p class="muted" style="text-align:center;line-height:1.9;margin:0">الإيميل <b style="color:var(--cream)">${esc(S.me.email)}</b> غير مضاف للفريق. اطلب من القائد يضيفه من الإعدادات، وبعدها حدّث الصفحة.</p><button class="btn" type="button" data-act="logout">تسجيل خروج</button>`);
+    root.innerHTML = box(`<h1>بانتظار الإضافة</h1><p class="muted" style="text-align:center;line-height:1.9;margin:0">الإيميل <b style="color:var(--cream)">${esc(S.me.email)}</b> غير مضاف للفريق. اطلب من مدير النظام يضيفه من صفحة الإدارة، وبعدها حدّث الصفحة.</p><button class="btn" type="button" data-act="logout">تسجيل خروج</button>`);
     return;
   }
   if (S.recovery) {
@@ -132,7 +132,7 @@ function renderLogin() {
         ${up ? '' : '<button class="btn ghost sm" type="button" data-act="forgot">نسيت كلمة المرور</button>'}
       </div>
     </form>
-    <p class="muted" style="text-align:center;font-size:13px;margin:0">الدخول لفريق صيت فقط، بالإيميل اللي أضافه القائد.</p>`);
+    <p class="muted" style="text-align:center;font-size:13px;margin:0">الدخول لفريق صيت فقط، بالإيميل اللي أضافه مدير النظام.</p>`);
 }
 
 // ---------- الهيكل ----------

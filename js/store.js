@@ -1,6 +1,6 @@
 // طبقة البيانات: Supabase إذا انضبطت الإعدادات، وإلا وضع تجريبي محفوظ في المتصفح
-import { CONFIG } from './config.js?v=1792499954';
-import { todayStr, addDays, monthOf, shiftMonth, SIZE_POINTS } from './logic.js?v=1792499954';
+import { CONFIG } from './config.js?v=1792500279';
+import { todayStr, addDays, monthOf, shiftMonth, SIZE_POINTS } from './logic.js?v=1792500279';
 
 export const isDemo = !(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
 let sb = null;
@@ -11,7 +11,7 @@ const check = ({ data, error }) => { if (error) throw new Error(error.message); 
 // ================= Supabase =================
 const remote = {
   async init() {
-    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm');
+    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0/+esm');
     sb = createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey);
   },
   onAuth(cb) { sb.auth.onAuthStateChange((event) => cb(event)); },
