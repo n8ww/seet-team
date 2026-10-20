@@ -1,5 +1,5 @@
-import { api, isDemo } from './store.js?v=1792499222';
-import * as L from './logic.js?v=1792499222';
+import { api, isDemo } from './store.js?v=1792499954';
+import * as L from './logic.js?v=1792499954';
 
 const root = document.getElementById('root');
 const dlg = document.getElementById('dlg');
@@ -13,10 +13,17 @@ const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&':
 const fmt = (n) => Number(n || 0).toLocaleString('en-US');
 const firstName = (n) => (n || '').split(' ')[0];
 const initial = (n) => (n || '؟').trim().charAt(0);
-const isLeader = () => !!(S.me && S.me.is_leader);
+const ROLES = { admin: 'مدير النظام', leader: 'القائد', head: 'رئيس قسم', member: 'عضو' };
+const role = () => (S.me && S.me.role) || 'member';
+const isAdmin = () => role() === 'admin';
+const isLeader = () => role() === 'admin' || role() === 'leader';
+const isManager = () => isLeader() || role() === 'head';
+const dept = (id) => (S.data.departments || []).find((d) => d.id === id);
+const canManage = (memberId) => isLeader() || (role() === 'head' && !!S.me.department_id && !!memberId && (profile(memberId) || {}).department_id === S.me.department_id);
+const rankChip = (p) => p && p.role && p.role !== 'member' ? `<span class="chip rank-${p.role}">${ROLES[p.role]}</span>` : '';
 const profile = (id) => S.data.profiles.find((p) => p.id === id);
 const av = (p, cls = '') => p ? `<span class="av ${cls}" style="background:${esc(p.color || '#d8c4a6')}" aria-hidden="true">${esc(initial(p.full_name))}</span>` : `<span class="av ${cls}" style="background:#3a2618;color:#a8917c" aria-hidden="true">؟</span>`;
-const activeMembers = () => S.data.profiles.filter((p) => p.active !== false);
+const activeMembers = () => (S.scoped ? S.scoped.profiles : S.data.profiles.filter((p) => p.active !== false));
 
 let toastT;
 function toast(msg, err) {
@@ -37,6 +44,8 @@ const I = {
   team: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
   award: '<circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 22l5-3 5 3-1.5-8"/>',
   ai: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
+  depts: '<path d="M3 21h18M5 21V8l7-5 7 5v13"/><path d="M9 21v-5h6v5M9 11h.01M15 11h.01"/>',
+  pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   up: '<path d="M12 19V5M5 12l7-7 7 7"/>',
   out: '<path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l-5-5 5-5M5 12h11"/>',
@@ -76,8 +85,16 @@ async function load() {
   S.settings = L.settingsOf(S.data.settings);
   const fresh = S.data.profiles.find((p) => p.id === S.me.id);
   if (fresh) S.me = fresh;
-  S.team = L.teamStats(S.data, S.settings);
-  S.ins = isLeader() ? L.insights(S.data, S.settings, S.team) : [];
+  // نطاق الرؤية حسب الرتبة
+  const active = S.data.profiles.filter((p) => p.active !== false);
+  let scope;
+  if (isLeader()) scope = active;
+  else if (role() === 'head') scope = active.filter((p) => p.department_id && p.department_id === S.me.department_id);
+  else scope = active;
+  const ids = new Set(scope.map((p) => p.id));
+  S.scoped = { ...S.data, profiles: scope, tasks: S.data.tasks.filter((t) => ids.has(t.assignee_id) || (isLeader() && !t.assignee_id)) };
+  S.team = L.teamStats(S.scoped, S.settings);
+  S.ins = isManager() ? L.insights(S.scoped, S.settings, S.team) : [];
 }
 
 async function refresh() { await load(); render(true); }
@@ -93,7 +110,7 @@ function renderLogin() {
   if (isDemo) {
     root.innerHTML = box(`<h1>متابعة أداء الفريق</h1>
       <div class="demo-bar">وضع تجريبي: البيانات تجريبية ومحفوظة في هذا المتصفح فقط. اختر شخص تدخل بحسابه.</div>
-      ${api.demoUsers().filter((p) => p.active !== false).map((p) => `<button class="who" type="button" data-act="demo-login" data-id="${esc(p.id)}">${av(p)}<span class="grow"><span style="display:block">${esc(p.full_name)}</span><span class="muted" style="font-size:12px">${esc(p.role_title)}${p.is_leader ? ' · صلاحيات قائد' : ''}</span></span></button>`).join('')}`);
+      ${api.demoUsers().filter((p) => p.active !== false).map((p) => `<button class="who" type="button" data-act="demo-login" data-id="${esc(p.id)}">${av(p)}<span class="grow"><span style="display:block">${esc(p.full_name)}</span><span class="muted" style="font-size:12px">${esc(p.role_title)}${p.role && p.role !== 'member' ? ' · ' + ROLES[p.role] : ''}</span></span></button>`).join('')}`);
     return;
   }
   if (S.me && S.me.denied) {
@@ -127,9 +144,8 @@ function route() {
 
 function render(keep) {
   const r = route();
-  const leaderOnly = ['plan', 'analyst', 'settings'];
-  if (leaderOnly.includes(r.name) && !isLeader()) { location.hash = '#/'; return; }
-  const views = { dash: viewDash, plan: viewPlan, tasks: viewTasks, team: viewTeam, reviews: viewReviews, analyst: viewAnalyst, settings: viewSettings };
+  if ((['plan', 'analyst', 'depts'].includes(r.name) && !isManager()) || (r.name === 'settings' && !isAdmin())) { location.hash = '#/'; return; }
+  const views = { dash: viewDash, plan: viewPlan, tasks: viewTasks, team: viewTeam, depts: viewDepts, reviews: viewReviews, analyst: viewAnalyst, settings: viewSettings };
   const v = views[r.name] || viewDash;
   const active = views[r.name] ? r.name : 'dash';
   const y = window.scrollY;
@@ -138,15 +154,16 @@ function render(keep) {
 }
 
 function shell(active, content) {
-  const ld = isLeader();
+  const ld = isManager();
   const items = [
     ['dash', '#/', 'dash', 'لوحة القيادة'],
-    ld && ['plan', '#/plan', 'plan', 'الخطة الشهرية'],
+    ld && ['plan', '#/plan', 'plan', 'المهام الجديدة'],
     ['tasks', '#/tasks', 'tasks', ld ? 'المهام' : 'مهامي'],
     ['team', ld ? '#/team' : `#/team/${S.me.id}`, 'team', ld ? 'الفريق' : 'أدائي'],
+    ld && ['depts', '#/depts', 'depts', role() === 'head' ? 'قسمي' : 'الأقسام'],
     ['reviews', '#/reviews', 'award', ld ? 'التقييمات' : 'تقييمي'],
     ld && ['analyst', '#/analyst', 'ai', 'المحلل الذكي'],
-    ld && ['settings', '#/settings', 'gear', 'الإعدادات']
+    isAdmin() && ['settings', '#/settings', 'gear', 'الإدارة']
   ].filter(Boolean);
   const cur = L.monthOf(L.todayStr());
   const months = [];
@@ -163,7 +180,7 @@ function shell(active, content) {
       </label>
       <div class="row" style="padding:4px 0">
         ${av(S.me)}
-        <div class="grow"><div style="font-weight:600;font-size:14px">${esc(S.me.full_name)}</div><div class="muted" style="font-size:12px">${esc(S.me.role_title || '')}</div></div>
+        <div class="grow"><div style="font-weight:600;font-size:14px">${esc(S.me.full_name)}</div><div class="muted" style="font-size:12px">${role() !== 'member' ? ROLES[role()] : esc(S.me.role_title || '')}${dept(S.me.department_id) ? ' · ' + esc(dept(S.me.department_id).name) : ''}</div></div>
         <button class="btn icon-btn ghost" type="button" data-act="logout" aria-label="تسجيل خروج" title="تسجيل خروج">${icon('out')}</button>
       </div>
     </div>
@@ -215,7 +232,7 @@ function viewDash() {
   const soon = S.data.tasks.filter((t) => t.status !== 'done' && t.due_date && L.daysBetween(t.due_date, L.todayStr()) <= 7)
     .sort((a, b) => (a.due_date > b.due_date ? 1 : -1));
   const eyebrow = `${L.monthLabel(S.month)}${fc.remaining > 0 && fc.elapsed > 0 ? ` · باقي ${L.nDays(fc.remaining)}` : ''}`;
-  if (!isLeader()) {
+  if (!isManager()) {
     const x = T.stats.find((s) => s.member.id === me.id) || L.memberStats(me, S.data, S.settings);
     const mineSoon = x.open.slice().sort((a, b) => ((a.due_date || '9') > (b.due_date || '9') ? 1 : -1));
     const read = L.memberRead(x);
@@ -233,8 +250,17 @@ function viewDash() {
         : `<section class="card ai"><h2 class="card-t">${icon('ai')}قراءة أدائي</h2><p style="font-size:15px;line-height:1.9">${esc(read.summary)}</p></section>`}
     </div>`;
   }
-  const goals = L.goalProgress(S.data);
-  return header(eyebrow, `أهلاً ${esc(firstName(me.full_name))}`, `<a class="btn" href="#/reviews">إصدار التقييمات</a><a class="btn pri" href="#/plan">${icon('up')}رفع الخطة</a>`) + `
+  const goals = L.goalProgress(S.scoped);
+  const myDept = dept(me.department_id);
+  const scopeLabel = isLeader() ? 'كل الفريق' : `قسم ${myDept ? myDept.name : ''}`;
+  return header(`${eyebrow} · ${esc(scopeLabel)}`, `أهلاً ${esc(firstName(me.full_name))}`, `<a class="btn" href="#/reviews">التقييمات</a><a class="btn pri" href="#/plan">${icon('up')}رفع الخطة</a>`) + `
+  <section class="card compose no-print">
+    <form data-form="quick" style="display:flex;flex-direction:column;gap:12px">
+      <label class="field"><span class="row" style="gap:8px;color:var(--cream);font-size:15px;font-weight:600">${icon('pen')}اكتب للفريق، وتتحول لمهام</span>
+        <textarea class="textarea" name="text" rows="3" style="min-height:96px" placeholder="مثال: مرام تطلق حملة سناب لأونا يوم الخميس، وزهرا تصور منيو الشتاء بكرة. عبدالملك يربط الدفع في موقع وِكاد بعد 3 أيام."></textarea></label>
+      <div class="row" style="justify-content:space-between;flex-wrap:wrap"><span class="muted" style="font-size:12px">اكتب بأسلوبك: الاسم والمهمة والموعد (بكرة، الخميس، بعد 3 أيام، 5/11). تراجعها قبل ما توصلهم.</span><button class="btn ai" type="submit">${icon('ai')}حوّلها لمهام</button></div>
+    </form>
+  </section>` + `
   <section class="kpis" aria-label="مؤشرات الشهر">
     ${kpi('إنجاز الخطة', T.completion, '%', T.completion, `${T.done} من ${T.total} مهمة · التوقع ${fc.pct}%`)}
     ${kpi('بانتظار مراجعتك', T.review.length, 'مهمة', T.total ? T.review.length / T.total * 100 : 0, T.review.length ? '<a href="#/tasks">راجعها الآن</a>' : 'ما فيه شي معلّق')}
@@ -254,7 +280,53 @@ function viewDash() {
     </section>
     <section class="card"><div class="card-h"><h2 class="card-t">تسليمات الأسبوع والمتأخر</h2><a href="#/tasks" style="font-size:13px">كل المهام</a></div>
       ${soon.length ? soon.slice(0, 8).map((t) => taskRow(t)).join('') : '<div class="empty">ما فيه تسليمات قريبة.</div>'}</section>
-  </div>`;
+  </div>
+  ${isLeader() ? `<section class="card"><div class="card-h"><h2 class="card-t">أداء الأقسام</h2><a href="#/depts" style="font-size:13px">التفاصيل</a></div>${deptBars()}</section>` : ''}`;
+}
+
+function deptStats() {
+  const deps = (S.data.departments || []).filter((d) => isLeader() || d.id === S.me.department_id);
+  return deps.map((d) => {
+    const members = S.team.stats.filter((x) => x.member.department_id === d.id);
+    const tasks = members.flatMap((x) => x.tasks);
+    const done = tasks.filter((t) => t.status === 'done');
+    const delivered = done.filter((t) => t.due_date && (t.submitted_at || t.done_at));
+    const onTime = delivered.filter((t) => L.daysBetween(t.submitted_at || t.done_at, t.due_date) <= 0 || (t.late_reason && t.late_reason !== 'self'));
+    const rated = done.filter((t) => t.quality);
+    const head = members.find((x) => x.member.role === 'head') || members.find((x) => ['leader', 'admin'].includes(x.member.role));
+    return {
+      d, members, head: head ? head.member : null, total: tasks.length, done: done.length,
+      completion: tasks.length ? Math.round(done.length / tasks.length * 100) : 0,
+      ontime: delivered.length ? Math.round(onTime.length / delivered.length * 100) : 0,
+      quality: rated.length ? rated.reduce((a, t) => a + t.quality, 0) / rated.length : 0,
+      score: members.length ? Math.round(members.reduce((a, x) => a + x.score, 0) / members.length) : 0,
+      overdue: members.reduce((a, x) => a + x.overdue.length, 0)
+    };
+  });
+}
+
+function deptBars() {
+  const ds = deptStats();
+  if (!ds.length) return '<div class="empty">ما فيه أقسام. أضفها من الإدارة.</div>';
+  return ds.map((x) => `<a class="list-row" href="#/depts"><span class="dept-mark" style="background:${esc(x.d.color)}"></span><span class="grow" style="display:flex;flex-direction:column;gap:8px"><span class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><b style="font-weight:600">${esc(x.d.name)}</b><span class="muted" style="font-size:12px">${x.done} من ${x.total} · ${x.members.length} أعضاء${x.overdue ? ` · <span class="warn">متأخر ${L.nTasks(x.overdue)}</span>` : ''}</span></span><span class="bar"><i style="width:${x.completion}%;background:${esc(x.d.color)}"></i></span></span><span class="num" style="font-size:28px;min-width:60px;text-align:left">${x.completion}%</span></a>`).join('');
+}
+
+// ---------- الأقسام ----------
+function viewDepts() {
+  const ds = deptStats();
+  const unassigned = S.team.stats.filter((x) => !x.member.department_id);
+  return header(L.monthLabel(S.month), role() === 'head' ? 'قسمي' : 'الأقسام', isAdmin() ? '<a class="btn" href="#/settings">إدارة الأقسام</a>' : '') + `
+  ${ds.map((x) => `<section class="card dept" style="--dc:${esc(x.d.color)}">
+    <div class="dept-h">
+      <div class="row" style="gap:14px"><span class="dept-mark lg" style="background:${esc(x.d.color)}"></span><div><h2 style="margin:0;font-family:var(--display);font-size:30px;line-height:1.2">${esc(x.d.name)}</h2><div class="muted" style="font-size:13px;margin-top:2px">${x.head ? `${esc(x.head.full_name)} · ${ROLES[x.head.role]}` : 'بدون رئيس قسم'} · ${x.members.length} أعضاء</div></div></div>
+      <div class="dept-score"><span class="num">${x.score}</span><span class="muted" style="font-size:12px">مؤشر القسم</span></div>
+    </div>
+    <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+      ${[['الإنجاز', x.completion + '%', x.completion], ['المواعيد', x.ontime + '%', x.ontime], ['الجودة', x.quality ? x.quality.toFixed(1) : '—', x.quality * 20], ['المتأخر الآن', x.overdue, 0]].map(([l, v, pc]) => `<div class="mini"><span class="muted" style="font-size:12px">${l}</span><span class="num" style="font-size:34px${l === 'المتأخر الآن' && x.overdue ? ';color:var(--warn)' : ''}">${v}</span>${pc ? `<span class="bar"><i style="width:${Math.min(100, pc)}%;background:${esc(x.d.color)}"></i></span>` : ''}</div>`).join('')}
+    </div>
+    <div style="display:flex;flex-direction:column">${x.members.map((m) => `<a class="list-row" href="#/team/${esc(m.member.id)}">${av(m.member, 'sm')}<span class="grow"><span style="font-weight:500">${esc(m.member.full_name)}</span> ${rankChip(m.member)}<span class="muted" style="font-size:12px;display:block">${esc(m.member.role_title || '')}</span></span><span class="muted" style="font-size:12px">${m.doneCount}/${m.total}</span><span class="num" style="font-size:24px;min-width:44px;text-align:left">${m.score}</span></a>`).join('') || '<div class="empty">ما فيه أعضاء في هذا القسم.</div>'}</div>
+  </section>`).join('')}
+  ${unassigned.length && isLeader() ? `<section class="card"><div class="card-h"><h2 class="card-t">بدون قسم</h2></div>${unassigned.map((m) => `<a class="list-row" href="#/team/${esc(m.member.id)}">${av(m.member, 'sm')}<span class="grow">${esc(m.member.full_name)} ${rankChip(m.member)}</span><span class="num" style="font-size:24px">${m.score}</span></a>`).join('')}</section>` : ''}`;
 }
 
 // ---------- الخطة ----------
@@ -269,10 +341,10 @@ function viewPlan() {
   const maxLoad = Math.max(1, ...Object.values(load));
   const goalOpts = (sel) => `<option value="">بدون هدف</option>` + [...goals.map((g) => g.title), ...(d ? d.goals : [])].filter((v, i, a) => a.indexOf(v) === i).map((g) => `<option${g === sel ? ' selected' : ''}>${esc(g)}</option>`).join('');
   const memberOpts = (sel) => `<option value="">بدون مسؤول</option>` + members.map((m) => `<option value="${esc(m.id)}"${m.id === sel ? ' selected' : ''}>${esc(m.full_name)}</option>`).join('');
-  return header(`خطة ${L.monthLabel(S.month)}`, 'ارفع الخطة، والمحلل يقسّمها ويوزّعها', `<button class="btn" type="button" data-act="new-task">+ مهمة يدوية</button>`) + `
+  return header(`${L.monthLabel(S.month)}${role() === 'head' && dept(S.me.department_id) ? ' · قسم ' + esc(dept(S.me.department_id).name) : ''}`, 'اكتب أو الصق، والمحلل يحوّلها لمهام', `<button class="btn" type="button" data-act="new-task">+ مهمة يدوية</button>`) + `
   <div class="split">
     <section class="card">
-      <div class="card-h"><h2 class="card-t">نص الخطة</h2><span class="muted" style="font-size:12px">انسخها من Word أو PDF والصقها هنا</span></div>
+      <div class="card-h"><h2 class="card-t">الخطة أو الكلام</h2><span class="muted" style="font-size:12px">اكتب بأسلوبك أو الصق الخطة من Word أو PDF</span></div>
       <form data-form="parse" style="display:flex;flex-direction:column;gap:12px">
         <label class="field"><span class="sr">نص الخطة</span><textarea class="textarea" name="text" rows="10" placeholder="هدف: حملة الشتاء لوِكاد
 - هوية بصرية لحملة الشتاء لعميل وِكاد كبيرة قبل 5/11
@@ -281,7 +353,7 @@ function viewPlan() {
 الكيترينق:
 - عروض أسعار لـ 3 فعاليات
 - خطة محتوى ديسمبر لرهف">${esc(d ? d.text : '')}</textarea></label>
-        <p class="muted" style="margin:0;font-size:12px;line-height:1.8">كل سطر = مهمة. السطر اللي ينتهي بـ «:» أو يبدأ بـ «هدف:» = هدف. اذكر اسم الموظف لو تبي تحدده، والحجم (صغيرة/متوسطة/كبيرة) والتاريخ (مثل 5/11). أو بصيغة: المهمة | العميل | المسؤول | الحجم | التاريخ</p>
+        <p class="muted" style="margin:0;font-size:12px;line-height:1.8">اكتب عادي: «مرام تطلق حملة سناب الخميس، وزهرا تصور المنيو بكرة». كل جملة فيها اسم تصير مهمة. المواعيد: اليوم، بكرة، الخميس، بعد 3 أيام، نهاية الأسبوع، 5/11. السطر اللي ينتهي بـ «:» = هدف. بدون اسم؟ المحلل يختار الأنسب حسب التخصص والحمل.</p>
         <div class="actions"><button class="btn ai" type="submit">${icon('ai')}حلّل ووزّع</button>${d ? '<button class="btn" type="button" data-act="draft-cancel">إلغاء</button>' : ''}</div>
       </form>
     </section>
@@ -319,10 +391,10 @@ function viewPlan() {
 
 // ---------- المهام ----------
 function viewTasks() {
-  const ld = isLeader();
+  const ld = isManager();
   if (S.filter == null) S.filter = ld ? 'all' : S.me.id;
   const members = activeMembers();
-  const shown = S.data.tasks.filter((t) => S.filter === 'all' || t.assignee_id === S.filter);
+  const shown = (ld ? S.scoped.tasks : S.data.tasks).filter((t) => S.filter === 'all' || t.assignee_id === S.filter);
   const filters = ld
     ? [`<button type="button" class="f all${S.filter === 'all' ? ' on' : ''}" data-act="filter" data-id="all" aria-pressed="${S.filter === 'all'}">كل الفريق</button>`,
        ...members.map((m) => `<button type="button" class="f${S.filter === m.id ? ' on' : ''}" data-act="filter" data-id="${esc(m.id)}" aria-pressed="${S.filter === m.id}">${av(m, 'sm')}${esc(m.full_name)}</button>`)]
@@ -350,9 +422,9 @@ function viewTasks() {
 }
 
 function openTask(id) {
-  const ld = isLeader();
   const t = id ? S.data.tasks.find((x) => x.id === id) : { id: null, title: '', client: '', description: '', assignee_id: '', goal_id: '', size: 'M', points: 20, due_date: '', status: 'new', quality: null, late_reason: null };
   if (!t) return;
+  const ld = t.id ? (t.assignee_id ? canManage(t.assignee_id) : isLeader()) : isManager();
   S.dlgTask = t;
   S.dlgQuality = t.quality || null;
   const p = profile(t.assignee_id);
@@ -404,13 +476,13 @@ function openTask(id) {
 // ---------- الفريق ----------
 function viewTeam(r) {
   if (!r.id) {
-    if (!isLeader()) { location.hash = `#/team/${S.me.id}`; return ''; }
+    if (!isManager()) { location.hash = `#/team/${S.me.id}`; return ''; }
     return header(L.monthLabel(S.month), 'الفريق') + `<div class="grid-cards">${S.team.stats.map((x) => `<a class="card" href="#/team/${esc(x.member.id)}" style="display:flex;flex-direction:column;gap:14px;text-decoration:none;color:var(--cream)">
       <div class="row">${av(x.member)}<div class="grow"><div style="font-weight:600">${esc(x.member.full_name)}</div><div class="muted" style="font-size:12px">${esc(x.member.role_title || '')}</div></div></div>
       <div class="row" style="justify-content:space-between;align-items:flex-end"><div><div class="num" style="font-size:48px">${x.score}</div><span class="chip" style="margin-top:8px">${L.grade(x.score)}</span></div><div style="text-align:left"><div class="num" style="font-size:28px;color:var(--sand)">${x.parts.completion}%</div><div class="muted" style="font-size:12px">إنجاز</div></div></div>
       <div class="muted" style="font-size:13px">${x.doneCount} من ${x.total} مهام · ${x.overdue.length ? `<span class="warn">متأخر: ${L.nTasks(x.overdue.length)}</span>` : 'بدون تأخير'}</div></a>`).join('')}</div>`;
   }
-  if (!isLeader() && r.id !== S.me.id) { location.hash = `#/team/${S.me.id}`; return ''; }
+  if (r.id !== S.me.id && !canManage(r.id)) { location.hash = `#/team/${S.me.id}`; return ''; }
   const m = profile(r.id);
   if (!m) return '<div class="empty">الموظف غير موجود.</div>';
   const x = S.team.stats.find((s) => s.member.id === m.id) || L.memberStats(m, S.data, S.settings);
@@ -427,7 +499,7 @@ function viewTeam(r) {
     <div style="flex:1 1 260px;min-width:0;display:flex;flex-direction:column;gap:8px">
       <p class="eyebrow">ملف الأداء · ${L.monthLabel(S.month)}</p>
       <h1 class="h1" style="margin:0">${esc(m.full_name)}</h1>
-      <div class="actions"><span class="chip">${esc(m.role_title || '')}</span><span class="chip blue">${L.grade(x.score)}</span></div>
+      <div class="actions"><span class="chip">${esc(m.role_title || '')}</span>${rankChip(m)}${dept(m.department_id) ? `<span class="chip">${esc(dept(m.department_id).name)}</span>` : ''}<span class="chip blue">${L.grade(x.score)}</span></div>
     </div>
     <div class="row" style="gap:30px;flex-wrap:wrap">
       <div style="text-align:center"><div class="num" style="font-size:76px;color:var(--sand)">${x.parts.completion}%</div><div class="muted" style="font-size:13px;margin-top:4px">إنجاز المهام</div></div>
@@ -479,16 +551,17 @@ function evalCard(x, editable) {
 
 function viewReviews() {
   const w = S.settings.weights;
-  if (!isLeader()) {
+  if (!isManager()) {
     const x = S.team.stats.find((s) => s.member.id === S.me.id);
     const ok = x && x.evaluation && x.evaluation.approved;
     return header(L.monthLabel(S.month), 'تقييمي', ok ? `<button class="btn" type="button" data-act="print">${icon('print')}طباعة / PDF</button>` : '') + (ok ? evalCard(x, false) : '<div class="card empty">تقييم هالشهر ما صدر بعد. يصدر بعد اعتماد القائد.</div>');
   }
-  const approved = S.team.stats.filter((x) => x.evaluation && x.evaluation.approved).length;
-  return header(`${L.monthLabel(S.month)} · ${approved} من ${S.team.stats.length} معتمدة`, 'إصدار التقييمات', `<button class="btn" type="button" data-act="print">${icon('print')}طباعة / PDF</button><button class="btn pri" type="button" data-act="approve-all">اعتماد الكل</button>`) + `
+  const others = S.team.stats.filter((x) => x.member.id !== S.me.id);
+  const approved = others.filter((x) => x.evaluation && x.evaluation.approved).length;
+  return header(`${L.monthLabel(S.month)} · ${approved} من ${others.length} معتمدة`, 'إصدار التقييمات', `<button class="btn" type="button" data-act="print">${icon('print')}طباعة / PDF</button><button class="btn pri" type="button" data-act="approve-all">اعتماد الكل</button>`) + `
   <section class="card" style="padding:18px 22px"><div class="card-h" style="margin-bottom:12px"><h2 class="card-t" style="font-size:16px">معادلة التقييم</h2><a href="#/settings" class="no-print" style="font-size:13px">تعديل الأوزان</a></div>
     <div class="rules">${[['completion', 'الإنجاز', 'المكتمل من المسند'], ['ontime', 'المواعيد', 'التسليم بالموعد أو قبله'], ['quality', 'الجودة', 'تقييم القائد من 5'], ['initiative', 'المبادرة', 'يحددها القائد']].map(([k, l, d]) => `<div class="rule row" style="gap:12px"><span class="num" style="font-size:30px;color:var(--sand);margin:0">${w[k]}%</span><span><b style="font-weight:500;display:block">${l}</b><span style="margin:0">${d}</span></span></div>`).join('')}</div></section>
-  <div class="split" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,500px),1fr))">${S.team.stats.map((x) => evalCard(x, true)).join('')}</div>`;
+  <div class="split" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,500px),1fr))">${S.team.stats.map((x) => x.member.id === S.me.id ? (x.evaluation && x.evaluation.approved ? evalCard(x, false) : '') : evalCard(x, true)).join('')}</div>`;
 }
 
 // ---------- المحلل ----------
@@ -551,10 +624,33 @@ function viewSettings() {
     </div>
     <label class="field">كلمات التخصص (يستخدمها المحلل في التوزيع، افصل بفاصلة)<input class="input" name="skills" value="${esc((a.skills || []).join('، '))}"></label>
     <div class="row" style="justify-content:space-between;flex-wrap:wrap">
-      <label class="check"><input type="checkbox" name="is_leader"${a.is_leader ? ' checked' : ''}>صلاحيات قائد (يرفع الخطة ويعتمد)</label>
+      <span class="row" style="gap:10px;flex-wrap:wrap">
+        <label class="field" style="min-width:150px">الرتبة<select class="select" name="role"${a.email && a.email === S.me.email ? ' disabled title="ما تقدر تغيّر رتبتك"' : ''}>${Object.entries(ROLES).map(([k, v]) => `<option value="${k}"${(a.role || 'member') === k ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+        <label class="field" style="min-width:170px">القسم<select class="select" name="department_id"><option value="">بدون قسم</option>${(S.data.departments || []).map((d) => `<option value="${esc(d.id)}"${a.department_id === d.id ? ' selected' : ''}>${esc(d.name)}</option>`).join('')}</select></label>
+      </span>
       <span class="actions"><button class="btn sm pri" type="submit">${isNew ? 'إضافة للفريق' : 'حفظ'}</button>${isNew ? '' : `<button class="btn sm danger" type="button" data-act="del-member" data-email="${esc(a.email)}">إزالة</button>`}</span>
     </div></form>`;
-  return header('للقائد فقط', 'الإعدادات') + `
+  const deps = S.data.departments || [];
+  return header('صلاحية مدير النظام', 'الإدارة') + `
+  <section class="card"><div class="card-h"><h2 class="card-t">الرتب</h2></div>
+    <div class="rules">
+      <div class="rule"><span>${ROLES.admin}</span>كل الصلاحيات: الأعضاء والرتب والأقسام والإعدادات</div>
+      <div class="rule"><span>${ROLES.leader}</span>الخطة والمهام والتقييمات والتحليل لكل الفريق</div>
+      <div class="rule"><span>${ROLES.head}</span>مهام قسمه وتقييماتهم وتحليل القسم</div>
+      <div class="rule"><span>${ROLES.member}</span>مهامه وأداؤه وتقييمه</div>
+    </div></section>
+  <section class="card"><div class="card-h"><h2 class="card-t">الأقسام</h2><span class="muted" style="font-size:12px">${deps.length} أقسام</span></div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+    ${deps.map((d) => `<form data-form="dept" data-id="${esc(d.id)}" class="row" style="flex-wrap:wrap">
+      <label class="field" style="width:64px"><span class="sr">اللون</span><input class="input" type="color" name="color" value="${esc(d.color || '#d8c4a6')}" style="padding:4px"></label>
+      <label class="field grow" style="min-width:180px"><span class="sr">اسم القسم</span><input class="input" name="name" required value="${esc(d.name)}"></label>
+      <span class="muted" style="font-size:12px;min-width:70px">${S.data.profiles.filter((p) => p.department_id === d.id && p.active !== false).length} أعضاء</span>
+      <button class="btn sm" type="submit">حفظ</button><button class="btn sm danger" type="button" data-act="del-dept" data-id="${esc(d.id)}">حذف</button></form>`).join('')}
+    <form data-form="dept" class="row" style="flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--line)">
+      <label class="field" style="width:64px"><span class="sr">اللون</span><input class="input" type="color" name="color" value="#d8c4a6" style="padding:4px"></label>
+      <label class="field grow" style="min-width:180px"><span class="sr">قسم جديد</span><input class="input" name="name" required placeholder="قسم جديد"></label>
+      <button class="btn sm pri" type="submit">إضافة قسم</button></form>
+    </div></section>` + `
   <section class="card"><div class="card-h"><h2 class="card-t">أعضاء الفريق</h2><span class="muted" style="font-size:12px">كل عضو يدخل بإيميله المضاف هنا</span></div>
     <div style="display:flex;flex-direction:column;gap:12px">${allowed.map((a) => row(a, false)).join('')}
     <h3 style="margin:10px 0 0;font-size:15px">إضافة عضو</h3>${row({}, true)}</div></section>
@@ -620,12 +716,14 @@ const ACT = {
     if (!confirm('اعتماد تقييمات كل الفريق ونشرها لهم؟')) return;
     await run(async () => {
       for (const x of S.team.stats) {
+        if (x.member.id === S.me.id) continue;
         const ev = x.evaluation || {};
         await api.saveEvaluation({ member_id: x.member.id, month: S.month, initiative: ev.initiative != null ? ev.initiative : 50, score: x.score, grade: L.grade(x.score), note: ev.note || L.draftNote(x), approved: true, approved_at: new Date().toISOString() });
       }
     }, 'تم اعتماد كل التقييمات');
   },
   async 'del-member'(el) { if (!confirm('إزالة العضو من الفريق؟ يفقد صلاحية الدخول وتبقى بياناته.')) return; await run(async () => { await api.deleteAllowed(el.dataset.email); const p = S.data.profiles.find((x) => x.email === el.dataset.email); if (p && !isDemo) await api.updateProfile(p.id, { active: false }); }, 'تمت الإزالة'); },
+  async 'del-dept'(el) { if (!confirm('حذف القسم؟ الأعضاء يبقون بدون قسم.')) return; await run(() => api.deleteDepartment(el.dataset.id), 'تم حذف القسم'); },
   async 'reset-demo'() { if (!confirm('ترجع البيانات التجريبية من البداية؟')) return; api.resetDemo(); await refresh(); toast('تمت الإعادة'); }
 };
 
@@ -639,6 +737,16 @@ const FORMS = {
     } catch (e) { toast(e.message === 'Invalid login credentials' ? 'الإيميل أو كلمة المرور غلط' : e.message, true); }
   },
   async newpass(f) { try { await api.updatePassword(f.password.value); S.recovery = false; toast('تم تغيير كلمة المرور'); await start(); } catch (e) { toast(e.message, true); } },
+  quick(f) {
+    const text = f.text.value;
+    if (!text.trim()) { toast('اكتب المهام أول', true); return; }
+    const r = L.parsePlan(text, activeMembers(), S.month, S.data);
+    if (!r.tasks.length) { toast('ما لقيت مهام في الكلام', true); return; }
+    S.draft = { text, goals: r.goals, tasks: r.tasks };
+    location.hash = '#/plan';
+    toast(`طلعت ${L.nTasks(r.tasks.length)}، راجعها واعتمد`);
+  },
+  async dept(f) { await run(() => api.saveDepartment({ id: f.dataset.id || null, name: f.elements.namedItem('name').value.trim(), color: f.color.value }), 'تم الحفظ'); },
   parse(f) {
     const text = f.text.value;
     if (!text.trim()) { toast('الصق نص الخطة أول', true); return; }
@@ -681,12 +789,12 @@ const FORMS = {
   async member(f) {
     const row = {
       email: f.email.value.trim().toLowerCase(), full_name: f.full_name.value.trim(), role_title: f.role_title.value.trim(), color: f.color.value,
-      skills: f.skills.value.split(/[,،]/).map((x) => x.trim()).filter(Boolean), is_leader: f.is_leader.checked
+      skills: f.skills.value.split(/[,،]/).map((x) => x.trim()).filter(Boolean), role: f.role.value, department_id: f.department_id.value || null
     };
     await run(async () => {
       await api.saveAllowed(row);
       const p = S.data.profiles.find((x) => x.email === row.email);
-      if (p && !isDemo) await api.updateProfile(p.id, { full_name: row.full_name, role_title: row.role_title, color: row.color, skills: row.skills, is_leader: row.is_leader, active: true });
+      if (p && !isDemo) await api.updateProfile(p.id, { full_name: row.full_name, role_title: row.role_title, color: row.color, skills: row.skills, role: row.role, department_id: row.department_id, active: true });
     }, 'تم الحفظ');
   },
   async settings(f) {

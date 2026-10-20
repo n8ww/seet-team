@@ -1,6 +1,6 @@
 // طبقة البيانات: Supabase إذا انضبطت الإعدادات، وإلا وضع تجريبي محفوظ في المتصفح
-import { CONFIG } from './config.js?v=1792499222';
-import { todayStr, addDays, monthOf, shiftMonth, SIZE_POINTS } from './logic.js?v=1792499222';
+import { CONFIG } from './config.js?v=1792499954';
+import { todayStr, addDays, monthOf, shiftMonth, SIZE_POINTS } from './logic.js?v=1792499954';
 
 export const isDemo = !(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
 let sb = null;
@@ -31,21 +31,23 @@ const remote = {
   async updatePassword(password) { check(await sb.auth.updateUser({ password })); },
   async signOut() { await sb.auth.signOut(); },
   async load(month, me) {
-    const [profiles, tasks, goals, adjustments, evaluations, settings, history] = await Promise.all([
+    const [profiles, tasks, goals, adjustments, evaluations, settings, history, departments] = await Promise.all([
       sb.from('profiles').select('*').order('created_at'),
       sb.from('tasks').select('*').eq('month', month).order('due_date', { nullsFirst: false }),
       sb.from('goals').select('*').eq('month', month).order('created_at'),
       sb.from('adjustments').select('*').eq('month', month).order('created_at', { ascending: false }),
       sb.from('evaluations').select('*').eq('month', month),
       sb.from('settings').select('data').eq('id', 1).maybeSingle(),
-      sb.from('tasks').select('id,month,client,assignee_id,status,due_date,submitted_at,done_at,late_reason').gte('month', shiftMonth(month, -5)).lte('month', month)
+      sb.from('tasks').select('id,month,client,assignee_id,status,due_date,submitted_at,done_at,late_reason').gte('month', shiftMonth(month, -5)).lte('month', month),
+      sb.from('departments').select('*').order('sort')
     ]);
     let allowed = [];
-    if (me.is_leader) allowed = check(await sb.from('allowed_members').select('*').order('full_name'));
+    if (me.role === 'admin') allowed = check(await sb.from('allowed_members').select('*').order('full_name'));
     return {
       month,
       profiles: check(profiles), tasks: check(tasks), goals: check(goals), adjustments: check(adjustments),
-      evaluations: check(evaluations), settings: (check(settings) || {}).data || {}, history: check(history), allowed
+      evaluations: check(evaluations), settings: (check(settings) || {}).data || {}, history: check(history), allowed,
+      departments: check(departments)
     };
   },
   async addTasks(rows) { return check(await sb.from('tasks').insert(rows).select()); },
@@ -60,11 +62,13 @@ const remote = {
   async saveSettings(data) { check(await sb.from('settings').update({ data }).eq('id', 1)); },
   async updateProfile(id, patch) { check(await sb.from('profiles').update(patch).eq('id', id)); },
   async saveAllowed(row) { check(await sb.from('allowed_members').upsert(row)); },
-  async deleteAllowed(email) { check(await sb.from('allowed_members').delete().eq('email', email)); }
+  async deleteAllowed(email) { check(await sb.from('allowed_members').delete().eq('email', email)); },
+  async saveDepartment(row) { if (row.id) check(await sb.from('departments').update({ name: row.name, color: row.color }).eq('id', row.id)); else check(await sb.from('departments').insert({ name: row.name, color: row.color, sort: row.sort || 99 })); },
+  async deleteDepartment(id) { check(await sb.from('departments').delete().eq('id', id)); }
 };
 
 // ================= الوضع التجريبي =================
-const KEY = 'seet-team-demo-v1';
+const KEY = 'seet-team-demo-v2';
 const ME_KEY = 'seet-team-demo-me';
 let db = null;
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { /* التخزين غير متاح */ } };
@@ -73,12 +77,17 @@ function seed() {
   const today = todayStr();
   const month = monthOf(today);
   const prev = shiftMonth(month, -1);
+  const departments = [
+    { id: 'd-ds', name: 'التصميم', color: '#d8c4a6', sort: 1 },
+    { id: 'd-mk', name: 'التسويق والكيترينق', color: '#a9c7e8', sort: 2 },
+    { id: 'd-it', name: 'تقنية المعلومات', color: '#b9cfc4', sort: 3 }
+  ];
   const P = [
-    { id: 'm-rb', email: 'rahaf.b@demo', full_name: 'رهف باوزير', role_title: 'قائدة الفريق · التصميم', color: '#d8c4a6', is_leader: true, skills: ['تصميم', 'هوية', 'شعار', 'بوست', 'سوشال', 'بنر', 'مطبوعات'] },
-    { id: 'm-rs', email: 'rahaf.s@demo', full_name: 'رهف الشهري', role_title: 'التسويق · الكيترينق', color: '#efe7dc', is_leader: false, skills: ['تسويق', 'كيترينق', 'فعالية', 'موردين', 'عرض سعر', 'خطة محتوى'] },
-    { id: 'm-mr', email: 'maram@demo', full_name: 'مرام', role_title: 'ميديا باير · تسويق', color: '#a9c7e8', is_leader: false, skills: ['إعلان', 'حملة', 'ميديا', 'سناب', 'تيك توك', 'ميتا', 'تقرير أداء'] },
-    { id: 'm-zh', email: 'zahra@demo', full_name: 'زهرا', role_title: 'تصوير · تسويق', color: '#c9a27e', is_leader: false, skills: ['تصوير', 'فيديو', 'ريلز', 'مونتاج', 'جلسة'] },
-    { id: 'm-am', email: 'abdulmalek@demo', full_name: 'عبدالملك', role_title: 'تقنية المعلومات', color: '#b9cfc4', is_leader: true, skills: ['موقع', 'نظام', 'تقنية', 'برمجة', 'ربط', 'أتمتة'] }
+    { id: 'm-am', email: 'abdulmalek@demo', full_name: 'عبدالملك', role_title: 'تقنية المعلومات', color: '#b9cfc4', role: 'admin', department_id: 'd-it', skills: ['موقع', 'نظام', 'تقنية', 'برمجة', 'ربط', 'أتمتة'] },
+    { id: 'm-rb', email: 'rahaf.b@demo', full_name: 'رهف باوزير', role_title: 'قائدة الفريق · التصميم', color: '#d8c4a6', role: 'leader', department_id: 'd-ds', skills: ['تصميم', 'هوية', 'شعار', 'بوست', 'سوشال', 'بنر', 'مطبوعات'] },
+    { id: 'm-rs', email: 'rahaf.s@demo', full_name: 'رهف الشهري', role_title: 'مسؤولة التسويق والكيترينق', color: '#efe7dc', role: 'head', department_id: 'd-mk', skills: ['تسويق', 'كيترينق', 'فعالية', 'موردين', 'عرض سعر', 'خطة محتوى'] },
+    { id: 'm-mr', email: 'maram@demo', full_name: 'مرام', role_title: 'ميديا باير · تسويق', color: '#a9c7e8', role: 'member', department_id: 'd-mk', skills: ['إعلان', 'حملة', 'ميديا', 'سناب', 'تيك توك', 'ميتا', 'تقرير أداء'] },
+    { id: 'm-zh', email: 'zahra@demo', full_name: 'زهرا', role_title: 'تصوير · تسويق', color: '#c9a27e', role: 'member', department_id: 'd-mk', skills: ['تصوير', 'فيديو', 'ريلز', 'مونتاج', 'جلسة'] }
   ].map((p) => ({ ...p, active: true }));
   const goals = [
     { id: 'g1', month, title: 'هويات وتصاميم العملاء', owner_id: 'm-rb' },
@@ -128,7 +137,8 @@ function seed() {
     profiles: P, goals, tasks: [...tasks, ...past],
     adjustments: [{ id: uid(), member_id: 'm-mr', month, points: 10, reason: 'فكرة حملة مقترحة اعتمدها العميل', created_at: new Date().toISOString() }],
     evaluations: [], settings: {},
-    allowed: P.map(({ email, full_name, role_title, color, skills, is_leader }) => ({ email, full_name, role_title, color, skills, is_leader }))
+    departments,
+    allowed: P.map(({ email, full_name, role_title, color, skills, role, department_id }) => ({ email, full_name, role_title, color, skills, role, department_id }))
   };
 }
 
@@ -158,7 +168,8 @@ const local = {
       evaluations: db.evaluations.filter((e) => e.month === month),
       settings: db.settings,
       history: db.tasks.filter((t) => t.month <= month),
-      allowed: db.allowed
+      allowed: db.allowed,
+      departments: db.departments
     });
   },
   async addTasks(rows) { const out = rows.map((r) => ({ id: uid(), status: 'new', quality: null, late_reason: null, submitted_at: null, done_at: null, description: '', ...r })); db.tasks.push(...out); save(); return out; },
@@ -191,7 +202,9 @@ const local = {
     if (p) Object.assign(p, row); else db.profiles.push({ id: uid(), active: true, ...row });
     save();
   },
-  async deleteAllowed(email) { db.allowed = db.allowed.filter((a) => a.email !== email); const p = db.profiles.find((x) => x.email === email); if (p) p.active = false; save(); }
+  async deleteAllowed(email) { db.allowed = db.allowed.filter((a) => a.email !== email); const p = db.profiles.find((x) => x.email === email); if (p) p.active = false; save(); },
+  async saveDepartment(row) { if (row.id) { const d = db.departments.find((x) => x.id === row.id); if (d) Object.assign(d, { name: row.name, color: row.color }); } else db.departments.push({ id: uid(), name: row.name, color: row.color, sort: db.departments.length + 1 }); save(); },
+  async deleteDepartment(id) { db.departments = db.departments.filter((d) => d.id !== id); db.profiles.forEach((p) => { if (p.department_id === id) p.department_id = null; }); db.allowed.forEach((p) => { if (p.department_id === id) p.department_id = null; }); save(); }
 };
 
 export const api = isDemo ? local : remote;

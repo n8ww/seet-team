@@ -243,15 +243,72 @@ export function draftNote(x) {
 // ---------- تحليل الخطة وتوزيعها ----------
 const SIZE_WORDS = { L: ['كبيرة', 'كبير', 'ضخمة', 'L'], S: ['صغيرة', 'صغير', 'بسيطة', 'S'], M: ['متوسطة', 'متوسط', 'M'] };
 
-function findDate(line, month) {
-  let m = line.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
-  m = line.match(/(\d{1,2})\s*[/\\-]\s*(\d{1,2})/);
-  if (m) return `${month.slice(0, 4)}-${pad(m[2])}-${pad(m[1])}`;
-  m = line.match(/(?:يوم|بتاريخ|قبل|موعد|تسليم)\s*(\d{1,2})/);
-  if (m) return `${month}-${pad(m[1])}`;
+const toLatin = (x) => String(x).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+const DAY_WORDS = [['الاحد', 'الأحد', 'احد'], ['الاثنين', 'الإثنين', 'اثنين'], ['الثلاثاء', 'الثلاثا', 'ثلاثاء'], ['الاربعاء', 'الأربعاء', 'الاربعا', 'الأربعا', 'اربعاء'], ['الخميس', 'خميس'], ['الجمعة', 'الجمعه', 'جمعة'], ['السبت', 'سبت']];
+const NUM_WORDS = { 'يوم': 1, 'يومين': 2, 'ثلاث': 3, 'ثلاثة': 3, 'اربع': 4, 'أربع': 4, 'اربعة': 4, 'أربعة': 4, 'خمس': 5, 'خمسة': 5, 'اسبوع': 7, 'أسبوع': 7, 'اسبوعين': 14, 'أسبوعين': 14 };
+
+// يرجّع التاريخ والنص اللي دل عليه عشان ينشال من عنوان المهمة
+export function findDate(line, month, today = todayStr()) {
+  const t = toLatin(line);
+  let m = t.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return { date: `${m[1]}-${pad(m[2])}-${pad(m[3])}`, hit: m[0] };
+  m = t.match(/(?:(?:قبل|بتاريخ|موعد(?:ها)?|تسليم(?:ها)?|يوم)\s*)?(\d{1,2})\s*[/\\-]\s*(\d{1,2})/);
+  if (m) return { date: `${month.slice(0, 4)}-${pad(m[2])}-${pad(m[1])}`, hit: m[0] };
+  m = t.match(/(?:بعد|خلال)\s+(\d{1,2})\s*(يوم|ايام|أيام|اسابيع|أسابيع|اسبوع|أسبوع)/);
+  if (m) return { date: addDays(today, Number(m[1]) * (/سب|سابيع/.test(m[2]) ? 7 : 1)), hit: m[0] };
+  m = t.match(/(?:بعد|خلال)\s+(يومين|ثلاث(?:ة)? ايام|ثلاث(?:ة)? أيام|[اأ]ربع(?:ة)? [اأ]يام|خمس(?:ة)? [اأ]يام|[اأ]سبوعين|[اأ]سبوع)/);
+  if (m) return { date: addDays(today, NUM_WORDS[m[1].split(' ')[0]] || 7), hit: m[0] };
+  m = t.match(/بعد\s+(?:بكرة|بكره|بكرا|غد)/);
+  if (m) return { date: addDays(today, 2), hit: m[0] };
+  m = t.match(/(?:^|\s)(بكرة|بكره|بكرا|غدا|غداً|باكر)(?=\s|$|،|,|\.)/);
+  if (m) return { date: addDays(today, 1), hit: m[1] };
+  m = t.match(/(?:^|\s)(اليوم|الحين)(?=\s|$|،|,|\.)/);
+  if (m) return { date: today, hit: m[1] };
+  m = t.match(/نهاية\s+(?:هال|هذا\s+ال)?(?:ال)?[اأ]سبوع|آخر\s+(?:ال)?[اأ]سبوع/);
+  if (m) { const dow = new Date(today + 'T12:00:00').getDay(); return { date: addDays(today, (4 - dow + 7) % 7), hit: m[0] }; }
+  m = t.match(/(?:ال)?[اأ]سبوع\s+(?:الجاي|القادم|الياي)/);
+  if (m) { const dow = new Date(today + 'T12:00:00').getDay(); return { date: addDays(today, ((4 - dow + 7) % 7) + 7), hit: m[0] }; }
+  m = t.match(/(?:نهاية|آخر|اخر)\s+(?:هال|هذا\s+ال)?(?:ال)?شهر/);
+  if (m) return { date: `${month}-${pad(daysInMonth(month))}`, hit: m[0] };
+  for (let d = 0; d < 7; d++) {
+    for (const w of DAY_WORDS[d]) {
+      const re = new RegExp(`(?:(?:يوم|قبل|الى|إلى|لين|حتى)\\s+)?${w}(?:\\s+(?:الجاي|القادم|الياي))?(?=\\s|$|،|,|\\.)`);
+      const mm = t.match(re);
+      if (mm) {
+        const dow = new Date(today + 'T12:00:00').getDay();
+        let diff = (d - dow + 7) % 7;
+        if (diff === 0) diff = 7;
+        return { date: addDays(today, diff), hit: mm[0] };
+      }
+    }
+  }
+  m = t.match(/(?:يوم|بتاريخ|قبل|موعد(?:ها)?|تسليم(?:ها)?)\s*(\d{1,2})(?!\d)/);
+  if (m) return { date: `${month}-${pad(m[1])}`, hit: m[0] };
   return null;
 }
+
+// يقسم الكلام العادي لجمل، وكل جملة فيها اسم عضو تصير مهمة لحالها
+function splitChat(text, members) {
+  const names = members.map((m) => first(m.full_name)).filter(Boolean).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const lines = [];
+  text.split(/\r?\n/).forEach((raw) => {
+    raw.split(/(?<=[.؟!؛])\s+/).forEach((sent) => {
+      if (!names.length) { lines.push(sent); return; }
+      const re = new RegExp(`\\s*(?:،|,|\\s)\\s*(?:و|ثم\\s+|وبعدين\\s+)?(?=(?:${names.join('|')})(?:\\s|$|،))`, 'g');
+      sent.split(re).forEach((x) => lines.push(x));
+    });
+  });
+  const out = [];
+  let carry = '';
+  lines.map((l) => l.trim().replace(/[.؟!؛]+$/, '').trim()).filter(Boolean).forEach((l) => {
+    const rest = l.replace(FILLER, ' ').replace(FILLER, ' ').replace(/(^|\s)(?:من|و|يا)(?=\s|$)/g, ' ').trim();
+    if (rest.length < 2) { carry += l + ' '; return; }
+    out.push(carry + l); carry = '';
+  });
+  return out.filter((l) => l.length > 1);
+}
+
+const FILLER = /(^|\s)(?:خل|خلي|خلّي|ابي|أبي|ابغى|أبغى|نبي|نبغى|ابيك|أبيك|ابيها|أبيها|ابيه|أبيه|لازم|ياليت|يا ليت|المطلوب|مطلوب|عليه|عليها|تسوي|يسوي|تسوين|تخلص|يخلص|تخلصين|تشتغل على|يشتغل على|تجهز|يجهز|تجهزين|منك|منه|منها|ان|أن|لنا|لي)(?=\s|$)/g;
 
 export const norm = (x) => String(x || '').replace(/[\u064B-\u0652\u0640]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').toLowerCase();
 function matchPos(nl, k) {
@@ -264,7 +321,7 @@ function matchPos(nl, k) {
 
 export function parsePlan(text, members, month, data) {
   const knownClients = [...new Set([...(data.history || []), ...data.tasks].map((t) => t.client).filter((c) => c && c.length > 1))];
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = splitChat(text, members);
   const goals = [];
   const tasks = [];
   let goal = null;
@@ -287,13 +344,15 @@ export function parsePlan(text, members, month, data) {
       const rest = parts.slice(2).join(' ');
       who = members.find((m) => rest.includes(m.full_name)) || members.find((m) => rest.includes(first(m.full_name)));
       size = Object.keys(SIZE_WORDS).find((k) => SIZE_WORDS[k].some((w) => rest.includes(w)));
-      due = findDate(rest, month);
+      const fd = findDate(rest, month);
+      due = fd && fd.date;
       if (who) reason = 'محدد في الخطة';
     } else {
-      const byName = members.find((m) => line.includes(m.full_name)) || members.find((m) => new RegExp(`(^|\\s|ل|-)${first(m.full_name)}(\\s|$|،|,)`).test(line));
+      const byName = members.find((m) => line.includes(m.full_name)) || members.find((m) => new RegExp(`(^|\\s|ل|و|-)${first(m.full_name)}(\\s|$|،|,|:)`).test(line));
       if (byName) { who = byName; reason = 'مذكور بالاسم'; }
       size = Object.keys(SIZE_WORDS).find((k) => SIZE_WORDS[k].some((w) => new RegExp(`(^|\\s)${w}(\\s|$|،|,)`).test(line)));
-      due = findDate(line, month);
+      const fd = findDate(line, month);
+      if (fd) { due = fd.date; title = title.replace(fd.hit, ' '); }
       const c = line.match(/(?:للعميل|لعميل|عميل)\s*[«"]?([^\s«»",،|]+)/);
       if (c) client = c[1];
     }
@@ -321,7 +380,11 @@ export function parsePlan(text, members, month, data) {
         .replace(/\d{1,2}\s*[/\\-]\s*\d{1,2}/g, '')
         .replace(/(^|\s)(كبيرة|كبير|صغيرة|صغير|متوسطة|متوسط|ضخمة|بسيطة)(?=\s|$|،|,)/g, ' ')
         .replace(/(?:للعميل|لعميل)\s*\S+/g, '')
-        .replace(/\s{2,}/g, ' ').replace(/[\s،,\-–]+$/, '').trim() || line;
+        .replace(who && reason === 'مذكور بالاسم' ? new RegExp(`(^|\\s)[لو]?(?:${who.full_name}|${first(who.full_name)})(?=\\s|$|،|,|:)\\s*:?`) : /$^/, ' ')
+        .replace(FILLER, ' ').replace(FILLER, ' ')
+        .replace(/^\s*(?:و|ثم|بعدين|من)\s+/, '').replace(/^\s*(?:و|ثم|بعدين|من)\s+/, '')
+        .replace(/\s+(?:قبل|يوم|موعدها|تسليمها|لين|حتى)\s*$/, '')
+        .replace(/\s{2,}/g, ' ').replace(/^[\s،,:\-–]+|[\s،,:\-–]+$/g, '').trim() || line;
     }
     if (!size) size = /حملة|هوية|نظام|موقع|جلسة|إطلاق/.test(line) ? 'L' : /تقرير|تعديل|نشر|رد/.test(line) ? 'S' : 'M';
     const points = SIZE_POINTS[size];
