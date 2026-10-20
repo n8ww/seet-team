@@ -1,5 +1,5 @@
-import { api, isDemo } from './store.js?v=1';
-import * as L from './logic.js?v=1';
+import { api, isDemo } from './store.js?v=1792499222';
+import * as L from './logic.js?v=1792499222';
 
 const root = document.getElementById('root');
 const dlg = document.getElementById('dlg');
@@ -181,17 +181,16 @@ function kpi(label, value, unit, pctv, sub) {
   return `<div class="card kpi"><div class="muted" style="font-size:14px">${label}</div><div class="row" style="align-items:baseline;gap:8px"><span class="num">${value}</span><span class="muted" style="font-size:14px">${unit}</span></div><div class="bar"><i style="width:${Math.max(0, Math.min(100, pctv))}%"></i></div><div class="muted" style="font-size:13px">${sub}</div></div>`;
 }
 
-function leaderboard() {
+function teamProgress() {
   const st = S.team.stats;
-  const max = Math.max(1, ...st.map((x) => x.points));
   if (!st.length) return '<div class="empty">ما فيه أعضاء بعد.</div>';
   return st.map((x) => `<a class="list-row" href="#/team/${esc(x.member.id)}">
-    <span class="num muted" style="width:22px;font-size:24px">${x.rank}</span>${av(x.member)}
+    ${av(x.member)}
     <span class="grow" style="display:flex;flex-direction:column;gap:8px">
-      <span class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><span><b style="font-weight:600">${esc(x.member.full_name)}</b> <span class="muted" style="font-size:13px">· ${esc(x.member.role_title || '')}</span></span><span class="muted" style="font-size:12px">${x.doneCount} من ${x.total} مهام</span></span>
-      <span class="bar"><i style="width:${Math.round(x.points / max * 100)}%;background:${esc(x.member.color)}"></i></span>
+      <span class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><span><b style="font-weight:600">${esc(x.member.full_name)}</b> <span class="muted" style="font-size:13px">· ${esc(x.member.role_title || '')}</span></span><span class="muted" style="font-size:12px">${x.doneCount} من ${x.total} مهام${x.overdue.length ? ` · <span class="warn">متأخر ${L.nTasks(x.overdue.length)}</span>` : ''}</span></span>
+      <span class="bar"><i style="width:${x.parts.completion}%;background:${esc(x.member.color)}"></i></span>
     </span>
-    <span class="num" style="font-size:30px;min-width:56px;text-align:left">${fmt(x.points)}</span></a>`).join('');
+    <span class="num" style="font-size:28px;min-width:60px;text-align:left">${x.parts.completion}%</span></a>`).join('');
 }
 
 function insightCard(n, i) {
@@ -206,8 +205,7 @@ function taskRow(t, opts = {}) {
   return `<button type="button" class="list-row" data-act="open-task" data-id="${esc(t.id)}" style="width:100%;background:none;border-inline:0;border-bottom:0;font:inherit;cursor:pointer;text-align:right">
     ${opts.noAv ? '' : av(p, 'sm')}
     <span class="grow"><span style="display:block;font-weight:500;font-size:14px">${esc(t.title)}</span><span class="muted" style="font-size:12px">${esc(t.client || '—')}${opts.noAv ? '' : ' · ' + esc(p ? p.full_name : 'بدون مسؤول')} · ${L.STATUSES.find((s) => s.id === t.status).label}</span></span>
-    <span class="chip ${late ? 'warn' : ''}">${late ? `متأخرة ${L.nDays(L.daysBetween(L.todayStr(), t.due_date))}` : esc(L.dayLabel(t.due_date))}</span>
-    <span class="num" style="font-size:20px;min-width:38px;text-align:left;color:var(--sand)">+${t.points}</span></button>`;
+    <span class="chip ${late ? 'warn' : ''}">${late ? `متأخرة ${L.nDays(L.daysBetween(L.todayStr(), t.due_date))}` : esc(L.dayLabel(t.due_date))}</span></button>`;
 }
 
 // ---------- لوحة القيادة ----------
@@ -223,7 +221,7 @@ function viewDash() {
     const read = L.memberRead(x);
     return header(eyebrow, `أهلاً ${esc(firstName(me.full_name))}`, '<a class="btn pri" href="#/tasks">مهامي</a>') + `
     <section class="kpis" aria-label="مؤشراتي">
-      ${kpi('نقاطي هذا الشهر', fmt(x.points), 'نقطة', 100, S.settings.showLeaderboard ? `ترتيبي ${x.rank || '—'} من ${T.stats.length}` : 'استمر')}
+      ${kpi('مهامي المفتوحة', x.open.length, 'مهمة', x.total ? x.open.length / x.total * 100 : 0, x.dueSoon.length ? `تسليمها هالأسبوع: ${L.nTasks(x.dueSoon.length)}` : 'ما فيه تسليمات هالأسبوع')}
       ${kpi('المهام المكتملة', `${x.doneCount}/${x.total}`, '', x.parts.completion, `${x.parts.completion}% من مهامي`)}
       ${kpi('الالتزام بالمواعيد', x.parts.ontime, '%', x.parts.ontime, x.overdue.length ? `متأخر: ${L.nTasks(x.overdue.length)}` : 'ما عندي تأخير')}
       ${kpi('مؤشر الأداء', x.score, 'من 100', x.score, L.grade(x.score))}
@@ -231,7 +229,7 @@ function viewDash() {
     <div class="split">
       <section class="card"><div class="card-h"><h2 class="card-t">مهامي المفتوحة</h2><a href="#/tasks" style="font-size:13px">لوحة المهام</a></div>
         ${mineSoon.length ? mineSoon.map((t) => taskRow(t, { noAv: true })).join('') : '<div class="empty">ما عندك مهام مفتوحة.</div>'}</section>
-      ${S.settings.showLeaderboard ? `<section class="card"><div class="card-h"><h2 class="card-t">ترتيب الفريق</h2><span class="chip">${fmt(T.points)} نقطة</span></div>${leaderboard()}</section>`
+      ${S.settings.showTeam ? `<section class="card"><div class="card-h"><h2 class="card-t">إنجاز الفريق</h2><span class="chip">${T.done} من ${T.total}</span></div>${teamProgress()}</section>`
         : `<section class="card ai"><h2 class="card-t">${icon('ai')}قراءة أدائي</h2><p style="font-size:15px;line-height:1.9">${esc(read.summary)}</p></section>`}
     </div>`;
   }
@@ -239,12 +237,12 @@ function viewDash() {
   return header(eyebrow, `أهلاً ${esc(firstName(me.full_name))}`, `<a class="btn" href="#/reviews">إصدار التقييمات</a><a class="btn pri" href="#/plan">${icon('up')}رفع الخطة</a>`) + `
   <section class="kpis" aria-label="مؤشرات الشهر">
     ${kpi('إنجاز الخطة', T.completion, '%', T.completion, `${T.done} من ${T.total} مهمة · التوقع ${fc.pct}%`)}
-    ${kpi('نقاط الفريق', fmt(T.points), 'نقطة', 100, `${T.stats.length} أعضاء`)}
+    ${kpi('بانتظار مراجعتك', T.review.length, 'مهمة', T.total ? T.review.length / T.total * 100 : 0, T.review.length ? '<a href="#/tasks">راجعها الآن</a>' : 'ما فيه شي معلّق')}
     ${kpi('الالتزام بالمواعيد', T.ontime, '%', T.ontime, T.overdue.length ? `متأخر حالياً: ${L.nTasks(T.overdue.length)}` : 'ما فيه تأخير')}
     ${kpi('جودة التسليم', T.quality ? T.quality.toFixed(1) : '—', 'من 5', T.quality / 5 * 100, 'متوسط تقييم القائد')}
   </section>
   <div class="split">
-    <section class="card"><div class="card-h"><h2 class="card-t">ترتيب النقاط</h2><span class="chip">${fmt(T.points)} نقطة للفريق</span></div>${leaderboard()}</section>
+    <section class="card"><div class="card-h"><h2 class="card-t">إنجاز الفريق</h2><span class="chip">${T.done} من ${T.total} مهمة</span></div>${teamProgress()}</section>
     <section class="card ai" style="display:flex;flex-direction:column;gap:12px">
       <div class="card-h" style="margin:0"><h2 class="card-t">${icon('ai')}المحلل الذكي</h2><a href="#/analyst" class="blue" style="font-size:13px">التحليل الكامل</a></div>
       ${S.ins.length ? S.ins.slice(0, 3).map((n) => insightCard(n, S.ins.indexOf(n))).join('') : '<div class="empty">كل شي ماشي تمام، ما فيه تنبيهات.</div>'}
@@ -265,8 +263,9 @@ function viewPlan() {
   const goals = S.data.goals;
   const d = S.draft;
   const load = {};
-  members.forEach((m) => { load[m.id] = S.data.tasks.filter((t) => t.assignee_id === m.id && t.status !== 'done').reduce((a, t) => a + (t.points || 20), 0); });
-  if (d) d.tasks.forEach((t) => { if (t.include && t.assignee_id) load[t.assignee_id] = (load[t.assignee_id] || 0) + Number(t.points || 0); });
+  const cnt = {};
+  members.forEach((m) => { const open = S.data.tasks.filter((t) => t.assignee_id === m.id && t.status !== 'done'); cnt[m.id] = open.length; load[m.id] = open.reduce((a, t) => a + (L.SIZE_WEIGHT[t.size] || 2), 0); });
+  if (d) d.tasks.forEach((t) => { if (t.include && t.assignee_id) { cnt[t.assignee_id] = (cnt[t.assignee_id] || 0) + 1; load[t.assignee_id] = (load[t.assignee_id] || 0) + (L.SIZE_WEIGHT[t.size] || 2); } });
   const maxLoad = Math.max(1, ...Object.values(load));
   const goalOpts = (sel) => `<option value="">بدون هدف</option>` + [...goals.map((g) => g.title), ...(d ? d.goals : [])].filter((v, i, a) => a.indexOf(v) === i).map((g) => `<option${g === sel ? ' selected' : ''}>${esc(g)}</option>`).join('');
   const memberOpts = (sel) => `<option value="">بدون مسؤول</option>` + members.map((m) => `<option value="${esc(m.id)}"${m.id === sel ? ' selected' : ''}>${esc(m.full_name)}</option>`).join('');
@@ -288,8 +287,8 @@ function viewPlan() {
     </section>
     <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
       <section class="card">
-        <div class="card-h"><h2 class="card-t">توازن الحمل</h2><span class="muted" style="font-size:12px">نقاط المهام المفتوحة${d ? ' + المقترحة' : ''}</span></div>
-        ${members.map((m) => `<div style="display:flex;flex-direction:column;gap:6px;padding:7px 0"><div class="row" style="justify-content:space-between"><span class="row" style="gap:8px">${av(m, 'sm')}<span style="font-size:14px">${esc(m.full_name)}</span></span><span class="num" style="font-size:20px">${load[m.id] || 0}</span></div><div class="bar"><i style="width:${Math.round((load[m.id] || 0) / maxLoad * 100)}%;background:${esc(m.color)}"></i></div></div>`).join('')}
+        <div class="card-h"><h2 class="card-t">توازن الحمل</h2><span class="muted" style="font-size:12px">المهام المفتوحة${d ? ' + المقترحة' : ''}، والشريط حسب حجمها</span></div>
+        ${members.map((m) => `<div style="display:flex;flex-direction:column;gap:6px;padding:7px 0"><div class="row" style="justify-content:space-between"><span class="row" style="gap:8px">${av(m, 'sm')}<span style="font-size:14px">${esc(m.full_name)}</span></span><span class="muted" style="font-size:13px">${L.nTasks(cnt[m.id] || 0)}</span></div><div class="bar"><i style="width:${Math.round((load[m.id] || 0) / maxLoad * 100)}%;background:${esc(m.color)}"></i></div></div>`).join('')}
       </section>
       <section class="card">
         <div class="card-h"><h2 class="card-t">أهداف الشهر</h2></div>
@@ -305,14 +304,13 @@ function viewPlan() {
   ${d ? `<section class="card">
     <div class="card-h"><h2 class="card-t">المهام المقترحة (${d.tasks.filter((t) => t.include).length} من ${d.tasks.length})</h2>
       <div class="actions"><span class="muted" style="font-size:12px">راجع وعدّل، بعدها اعتمد</span><button class="btn pri" type="button" data-act="draft-approve">${icon('check')}اعتماد وإرسال للفريق</button></div></div>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th><span class="sr">تضمين</span></th><th>المهمة</th><th>العميل</th><th>المسؤول</th><th>الحجم</th><th>النقاط</th><th>التسليم</th><th>الهدف</th><th>ليش؟</th></tr></thead><tbody>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th><span class="sr">تضمين</span></th><th>المهمة</th><th>العميل</th><th>المسؤول</th><th>الحجم</th><th>التسليم</th><th>الهدف</th><th>ليش؟</th></tr></thead><tbody>
     ${d.tasks.map((t, i) => `<tr style="${t.include ? '' : 'opacity:.45'}">
       <td><input type="checkbox" aria-label="تضمين المهمة" data-change="draft" data-i="${i}" data-k="include"${t.include ? ' checked' : ''} style="width:18px;height:18px;accent-color:#d8c4a6"></td>
       <td><input class="input" aria-label="المهمة" value="${esc(t.title)}" data-change="draft" data-i="${i}" data-k="title" style="min-width:220px"></td>
       <td><input class="input" aria-label="العميل" value="${esc(t.client)}" data-change="draft" data-i="${i}" data-k="client" style="width:110px"></td>
       <td><select class="select" aria-label="المسؤول" data-change="draft" data-i="${i}" data-k="assignee_id">${memberOpts(t.assignee_id)}</select></td>
       <td><select class="select" aria-label="الحجم" data-change="draft" data-i="${i}" data-k="size">${['S', 'M', 'L'].map((s) => `<option value="${s}"${s === t.size ? ' selected' : ''}>${L.SIZE_LABEL[s]}</option>`).join('')}</select></td>
-      <td><input class="input" type="number" min="0" aria-label="النقاط" value="${t.points}" data-change="draft" data-i="${i}" data-k="points" style="width:70px"></td>
       <td><input class="input" type="date" aria-label="التسليم" value="${esc(t.due_date)}" data-change="draft" data-i="${i}" data-k="due_date"></td>
       <td><select class="select" aria-label="الهدف" data-change="draft" data-i="${i}" data-k="goal">${goalOpts(t.goal)}</select></td>
       <td class="blue" style="font-size:12px;max-width:180px;line-height:1.6">${esc(t.reason)}</td></tr>`).join('')}
@@ -330,15 +328,8 @@ function viewTasks() {
        ...members.map((m) => `<button type="button" class="f${S.filter === m.id ? ' on' : ''}" data-act="filter" data-id="${esc(m.id)}" aria-pressed="${S.filter === m.id}">${av(m, 'sm')}${esc(m.full_name)}</button>`)]
     : [`<button type="button" class="f all${S.filter !== 'all' ? ' on' : ''}" data-act="filter" data-id="${esc(S.me.id)}" aria-pressed="${S.filter !== 'all'}">مهامي</button>`,
        `<button type="button" class="f all${S.filter === 'all' ? ' on' : ''}" data-act="filter" data-id="all" aria-pressed="${S.filter === 'all'}">كل الفريق</button>`];
-  const s = S.settings;
   return header(`${L.monthLabel(S.month)} · ${shown.length} مهمة`, ld ? 'لوحة المهام' : 'مهامي', ld ? '<button class="btn pri" type="button" data-act="new-task">+ مهمة جديدة</button>' : '') + `
   <div class="filters" role="group" aria-label="تصفية">${filters.join('')}</div>
-  <section class="rules" aria-label="نظام النقاط">
-    <div class="rule"><span>حجم المهمة</span>صغيرة 10 · متوسطة 20 · كبيرة 30</div>
-    <div class="rule"><span>تسليم قبل الموعد</span><b style="color:var(--sand);font-weight:500">+${s.earlyBonus}% من نقاط المهمة</b></div>
-    <div class="rule"><span>جودة 5 من 5</span><b style="color:var(--sand);font-weight:500">+${s.qualityBonus} نقاط</b></div>
-    <div class="rule"><span>تأخير بسبب الموظف</span><b class="warn" style="font-weight:500">−${s.latePenalty}% لكل يوم</b></div>
-  </section>
   <div class="board-wrap"><div class="board">
     ${L.STATUSES.map((st) => {
       const items = shown.filter((t) => t.status === st.id).sort((a, b) => ((a.due_date || '9') > (b.due_date || '9') ? 1 : -1));
@@ -346,9 +337,8 @@ function viewTasks() {
       ${items.map((t) => {
         const p = profile(t.assignee_id);
         const late = t.status !== 'done' && t.due_date && t.due_date < L.todayStr();
-        const pts = t.status === 'done' ? L.taskPoints(t, s).total : t.points;
         return `<button type="button" class="tc" data-act="open-task" data-id="${esc(t.id)}">
-          <span class="row" style="justify-content:space-between;gap:8px">${t.client ? `<span class="chip">${esc(t.client)}</span>` : '<span></span>'}<span class="num" style="font-size:20px;color:var(--sand)">${pts}</span></span>
+          <span class="row" style="justify-content:space-between;gap:8px">${t.client ? `<span class="chip">${esc(t.client)}</span>` : '<span></span>'}<span class="muted" style="font-size:12px">${L.SIZE_LABEL[t.size] || ''}</span></span>
           <h3>${esc(t.title)}</h3>
           ${t.late_reason ? `<span class="tc-note">سبب التأخير: ${L.LATE_REASONS[t.late_reason]}</span>` : ''}
           ${t.quality ? `<span class="muted" style="font-size:12px">الجودة ${t.quality}/5</span>` : ''}
@@ -377,15 +367,14 @@ function openTask(id) {
         <label class="field">العميل<input class="input" name="client" value="${esc(t.client)}"></label>
         <label class="field">المسؤول<select class="select" name="assignee_id"><option value="">بدون مسؤول</option>${activeMembers().map((m) => `<option value="${esc(m.id)}"${m.id === t.assignee_id ? ' selected' : ''}>${esc(m.full_name)}</option>`).join('')}</select></label>
         <label class="field">الهدف<select class="select" name="goal_id"><option value="">بدون هدف</option>${S.data.goals.map((g) => `<option value="${esc(g.id)}"${g.id === t.goal_id ? ' selected' : ''}>${esc(g.title)}</option>`).join('')}</select></label>
-        <label class="field">الحجم<select class="select" name="size" data-change="size">${['S', 'M', 'L'].map((s) => `<option value="${s}"${s === t.size ? ' selected' : ''}>${L.SIZE_LABEL[s]}</option>`).join('')}</select></label>
-        <label class="field">النقاط<input class="input" type="number" min="0" name="points" value="${t.points}"></label>
+        <label class="field">الحجم<select class="select" name="size">${['S', 'M', 'L'].map((s) => `<option value="${s}"${s === t.size ? ' selected' : ''}>${L.SIZE_LABEL[s]}</option>`).join('')}</select></label>
         <label class="field">موعد التسليم<input class="input" type="date" name="due_date" value="${esc(t.due_date || '')}"></label>
         <label class="field">الحالة<select class="select" name="status">${L.STATUSES.map((s) => `<option value="${s.id}"${s.id === t.status ? ' selected' : ''}>${s.label}</option>`).join('')}</select></label>
         ${reasonSel('late_reason')}
       </div>
       <label class="field">التفاصيل<textarea class="textarea" name="description" rows="3" style="min-height:80px">${esc(t.description || '')}</textarea></label>
       ${t.id && (t.status === 'review' || t.status === 'done') ? `<div class="field">تقييم الجودة<div class="stars" role="group" aria-label="الجودة">${[5, 4, 3, 2, 1].map((n) => `<button type="button" class="star${S.dlgQuality === n ? ' on' : ''}" data-act="q" data-v="${n}" aria-pressed="${S.dlgQuality === n}">${n}</button>`).join('')}</div></div>` : ''}
-      ${t.submitted_at ? `<p class="muted" style="margin:0;font-size:13px">سُلّمت ${esc(t.submitted_at)}${t.due_date ? ` · الموعد ${esc(t.due_date)}` : ''}${t.status === 'done' ? ` · النقاط المحتسبة ${L.taskPoints(t, S.settings).total}` : ''}</p>` : ''}
+      ${t.submitted_at ? `<p class="muted" style="margin:0;font-size:13px">سُلّمت ${esc(t.submitted_at)}${t.due_date ? ` · الموعد ${esc(t.due_date)}` : ''}</p>` : ''}
       <div class="actions" style="justify-content:space-between">
         <span class="actions">${t.id && t.status === 'review' ? `<button class="btn pri" type="button" data-act="approve-task">${icon('check')}اعتماد التسليم</button>` : ''}<button class="btn ${t.id && t.status === 'review' ? '' : 'pri'}" type="submit">حفظ</button></span>
         ${t.id ? '<button class="btn danger" type="button" data-act="del-task">حذف</button>' : ''}
@@ -393,7 +382,7 @@ function openTask(id) {
   } else {
     const info = `<div style="display:flex;flex-direction:column;gap:10px;font-size:14px">
       <div class="row">${av(p, 'sm')}<span>${esc(p ? p.full_name : 'بدون مسؤول')}</span></div>
-      <div class="muted">العميل: <span style="color:var(--cream)">${esc(t.client || '—')}</span> · الحجم: ${L.SIZE_LABEL[t.size]} · ${t.points} نقطة</div>
+      <div class="muted">العميل: <span style="color:var(--cream)">${esc(t.client || '—')}</span> · الحجم: ${L.SIZE_LABEL[t.size]}</div>
       <div class="muted">التسليم: <span class="${late ? 'warn' : ''}" style="${late ? '' : 'color:var(--cream)'}">${esc(t.due_date || '—')}</span> · الحالة: ${L.STATUSES.find((s) => s.id === t.status).label}</div>
       ${t.description ? `<p style="margin:0;line-height:1.8">${esc(t.description)}</p>` : ''}
       ${t.quality ? `<div class="muted">تقييم الجودة: <span style="color:var(--sand)">${t.quality}/5</span></div>` : ''}</div>`;
@@ -418,7 +407,7 @@ function viewTeam(r) {
     if (!isLeader()) { location.hash = `#/team/${S.me.id}`; return ''; }
     return header(L.monthLabel(S.month), 'الفريق') + `<div class="grid-cards">${S.team.stats.map((x) => `<a class="card" href="#/team/${esc(x.member.id)}" style="display:flex;flex-direction:column;gap:14px;text-decoration:none;color:var(--cream)">
       <div class="row">${av(x.member)}<div class="grow"><div style="font-weight:600">${esc(x.member.full_name)}</div><div class="muted" style="font-size:12px">${esc(x.member.role_title || '')}</div></div></div>
-      <div class="row" style="justify-content:space-between;align-items:flex-end"><div><div class="num" style="font-size:48px">${x.score}</div><span class="chip" style="margin-top:8px">${L.grade(x.score)}</span></div><div style="text-align:left"><div class="num" style="font-size:28px;color:var(--sand)">${fmt(x.points)}</div><div class="muted" style="font-size:12px">نقطة</div></div></div>
+      <div class="row" style="justify-content:space-between;align-items:flex-end"><div><div class="num" style="font-size:48px">${x.score}</div><span class="chip" style="margin-top:8px">${L.grade(x.score)}</span></div><div style="text-align:left"><div class="num" style="font-size:28px;color:var(--sand)">${x.parts.completion}%</div><div class="muted" style="font-size:12px">إنجاز</div></div></div>
       <div class="muted" style="font-size:13px">${x.doneCount} من ${x.total} مهام · ${x.overdue.length ? `<span class="warn">متأخر: ${L.nTasks(x.overdue.length)}</span>` : 'بدون تأخير'}</div></a>`).join('')}</div>`;
   }
   if (!isLeader() && r.id !== S.me.id) { location.hash = `#/team/${S.me.id}`; return ''; }
@@ -427,11 +416,12 @@ function viewTeam(r) {
   const x = S.team.stats.find((s) => s.member.id === m.id) || L.memberStats(m, S.data, S.settings);
   const read = L.memberRead(x);
   const maxW = Math.max(1, ...x.weeks);
-  const s = S.settings;
-  const log = [
-    ...x.done.map((t) => { const b = L.taskPoints(t, s); const extra = [b.early ? `+${b.early} مبكر` : '', b.late ? `${b.late} تأخير` : '', b.quality ? `+${b.quality} جودة` : ''].filter(Boolean).join(' · '); return { date: t.done_at || t.submitted_at || '', text: t.title + (extra ? ` (${extra})` : ''), pts: b.total, id: null }; }),
-    ...x.adj.map((a) => ({ date: (a.created_at || '').slice(0, 10), text: a.reason, pts: a.points, id: a.id }))
-  ].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const log = [...x.done].sort((a, b) => ((a.submitted_at || a.done_at || '') < (b.submitted_at || b.done_at || '') ? 1 : -1)).map((t) => {
+    const d = t.submitted_at || t.done_at;
+    const diff = d && t.due_date ? L.daysBetween(d, t.due_date) : 0;
+    const timing = !t.due_date || !d ? '' : diff < 0 ? `<span class="chip">قبل الموعد بـ${L.nDays(-diff)}</span>` : diff === 0 ? '<span class="chip">بالموعد</span>' : `<span class="chip warn">متأخرة ${L.nDays(diff)}${t.late_reason && t.late_reason !== 'self' ? ` · ${L.LATE_REASONS[t.late_reason]}` : ''}</span>`;
+    return { date: d || '', title: t.title, timing, quality: t.quality };
+  });
   return `<section class="card" style="display:flex;flex-wrap:wrap;gap:26px;align-items:center;padding:28px">
     ${av(m, 'xl')}
     <div style="flex:1 1 260px;min-width:0;display:flex;flex-direction:column;gap:8px">
@@ -440,8 +430,8 @@ function viewTeam(r) {
       <div class="actions"><span class="chip">${esc(m.role_title || '')}</span><span class="chip blue">${L.grade(x.score)}</span></div>
     </div>
     <div class="row" style="gap:30px;flex-wrap:wrap">
-      <div style="text-align:center"><div class="num" style="font-size:76px;color:var(--sand)">${fmt(x.points)}</div><div class="muted" style="font-size:13px;margin-top:4px">نقطة هذا الشهر</div></div>
-      ${isLeader() || S.settings.showLeaderboard ? `<div style="text-align:center"><div class="num" style="font-size:76px">#${x.rank || '—'}</div><div class="muted" style="font-size:13px;margin-top:4px">الترتيب في الفريق</div></div>` : ''}
+      <div style="text-align:center"><div class="num" style="font-size:76px;color:var(--sand)">${x.parts.completion}%</div><div class="muted" style="font-size:13px;margin-top:4px">إنجاز المهام</div></div>
+      <div style="text-align:center"><div class="num" style="font-size:76px">${x.open.length}</div><div class="muted" style="font-size:13px;margin-top:4px">مهام مفتوحة</div></div>
     </div>
   </section>
   <section class="kpis" aria-label="المؤشرات">
@@ -451,7 +441,7 @@ function viewTeam(r) {
     ${kpi('مؤشر الأداء', x.score, 'من 100', x.score, 'حسب معادلة التقييم')}
   </section>
   <div class="split">
-    <section class="card"><h2 class="card-t" style="margin-bottom:16px">النقاط أسبوعياً</h2>
+    <section class="card"><h2 class="card-t" style="margin-bottom:16px">المهام المنجزة أسبوعياً</h2>
       <div class="chart" style="grid-template-columns:repeat(${x.weeks.length},minmax(0,1fr))">${x.weeks.map((w, i) => `<div class="chart-col"><span class="num" style="font-size:18px">${w}</span><div class="chart-bar" style="height:${Math.round(w / maxW * 85)}%;background:${i === x.weeks.length - 1 ? esc(m.color) : 'rgba(216,196,166,.3)'}"></div></div>`).join('')}</div>
       <div class="chart-x" style="grid-template-columns:repeat(${x.weeks.length},minmax(0,1fr))">${x.weeks.map((_, i) => `<span>أسبوع ${i + 1}</span>`).join('')}</div>
     </section>
@@ -463,12 +453,8 @@ function viewTeam(r) {
       </div></section>
   </div>
   <section class="card">
-    <div class="card-h"><h2 class="card-t">سجل النقاط</h2></div>
-    ${isLeader() ? `<form data-form="adjust" data-id="${esc(m.id)}" class="row no-print" style="flex-wrap:wrap;margin-bottom:12px">
-      <label class="field" style="width:110px"><span class="sr">النقاط</span><input class="input" type="number" name="points" required placeholder="+10 أو -5"></label>
-      <label class="field grow" style="min-width:200px"><span class="sr">السبب</span><input class="input" name="reason" required placeholder="السبب: مبادرة، شارة، ملاحظة…"></label>
-      <button class="btn" type="submit">إضافة نقاط</button></form>` : ''}
-    ${log.length ? log.map((l) => `<div class="list-row"><span class="muted" style="font-size:12px;min-width:84px">${esc(l.date)}</span><span class="grow" style="font-size:14px">${esc(l.text)}</span><span class="num" style="font-size:22px;color:${l.pts < 0 ? 'var(--warn)' : 'var(--sand)'}">${l.pts > 0 ? '+' : ''}${l.pts}</span>${l.id && isLeader() ? `<button class="btn icon-btn ghost no-print" type="button" data-act="del-adj" data-id="${esc(l.id)}" aria-label="حذف">${icon('x')}</button>` : ''}</div>`).join('') : '<div class="empty">ما فيه نقاط بعد هالشهر.</div>'}
+    <div class="card-h"><h2 class="card-t">المهام المنجزة</h2><span class="muted" style="font-size:12px">${L.nTasks(x.doneCount)}</span></div>
+    ${log.length ? log.map((l) => `<div class="list-row" style="flex-wrap:wrap"><span class="muted" style="font-size:12px;min-width:84px">${esc(l.date)}</span><span class="grow" style="font-size:14px;min-width:160px">${esc(l.title)}</span>${l.timing}${l.quality ? `<span class="muted" style="font-size:12px">الجودة ${l.quality}/5</span>` : ''}</div>`).join('') : '<div class="empty">ما فيه مهام منجزة بعد هالشهر.</div>'}
   </section>`;
 }
 
@@ -479,7 +465,7 @@ function evalCard(x, editable) {
   const note = ev.note || L.draftNote(x);
   const score = ev.approved && ev.score != null ? ev.score : x.score;
   return `<article class="card" style="display:flex;flex-direction:column;gap:16px;${ev.approved ? 'border-color:rgba(216,196,166,.4)' : ''}">
-    <div class="row" style="flex-wrap:wrap;gap:14px">${av(x.member)}<div class="grow" style="min-width:140px"><h2 style="margin:0;font-size:18px">${esc(x.member.full_name)}</h2><div class="muted" style="font-size:13px">${esc(x.member.role_title || '')} · ${fmt(x.points)} نقطة · ${x.doneCount}/${x.total} مهام</div></div>
+    <div class="row" style="flex-wrap:wrap;gap:14px">${av(x.member)}<div class="grow" style="min-width:140px"><h2 style="margin:0;font-size:18px">${esc(x.member.full_name)}</h2><div class="muted" style="font-size:13px">${esc(x.member.role_title || '')} · ${x.doneCount}/${x.total} مهام</div></div>
       <div style="text-align:center"><div class="num" style="font-size:52px">${score}</div><span class="chip" style="margin-top:6px">${esc(ev.approved ? ev.grade : L.grade(score))}</span></div></div>
     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 18px">${Object.entries(x.parts).map(([k, v]) => `<div style="display:flex;flex-direction:column;gap:6px"><div class="row" style="justify-content:space-between;font-size:12px"><span class="muted">${labels[k]} (${S.settings.weights[k]}%)</span><span>${v}</span></div><div class="bar"><i style="width:${v}%"></i></div></div>`).join('')}</div>
     ${editable ? `<form data-form="eval" data-id="${esc(x.member.id)}" style="display:flex;flex-direction:column;gap:12px">
@@ -547,7 +533,7 @@ function viewAnalyst() {
     <section class="card"><div class="card-h"><h2 class="card-t">أنماط من آخر 6 أشهر</h2></div>
       ${pats.length ? pats.map((p) => `<div class="list-row" style="align-items:flex-start"><span class="num blue" style="font-size:30px;min-width:70px">${esc(p.stat)}</span><div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:14px;line-height:1.75">${esc(p.text)}</span><span class="muted" style="font-size:13px">← ${esc(p.rec)}</span></div></div>`).join('') : '<div class="empty">تظهر الأنماط بعد ما يتجمع 6 تسليمات أو أكثر.</div>'}</section>
     <section class="card ai"><h2 class="card-t" style="margin-bottom:12px">${icon('ai')}عن المحلل</h2>
-      <p style="margin:0;line-height:1.9;font-size:14px">التحليل الحالي محسوب من بيانات المهام والنقاط مباشرة، ومجاني بالكامل. يتحدث كل ما فتحت الصفحة أو ضغطت «حلّل الآن».</p>
+      <p style="margin:0;line-height:1.9;font-size:14px">التحليل الحالي محسوب من بيانات المهام مباشرة، ومجاني بالكامل. يتحدث كل ما فتحت الصفحة أو ضغطت «حلّل الآن».</p>
       <p class="muted" style="margin:12px 0 0;line-height:1.9;font-size:13px">المرحلة الجاية: ربط OpenAI أو Gemini لقراءة ملفات PDF مباشرة والمحادثة مع المحلل، مع تنبيهات تلقائية على الإيميل والواتساب.</p></section>
   </div>`;
 }
@@ -572,21 +558,16 @@ function viewSettings() {
   <section class="card"><div class="card-h"><h2 class="card-t">أعضاء الفريق</h2><span class="muted" style="font-size:12px">كل عضو يدخل بإيميله المضاف هنا</span></div>
     <div style="display:flex;flex-direction:column;gap:12px">${allowed.map((a) => row(a, false)).join('')}
     <h3 style="margin:10px 0 0;font-size:15px">إضافة عضو</h3>${row({}, true)}</div></section>
-  <section class="card"><div class="card-h"><h2 class="card-t">قواعد النقاط والتقييم</h2></div>
+  <section class="card"><div class="card-h"><h2 class="card-t">معادلة التقييم الشهري</h2></div>
     <form data-form="settings" style="display:flex;flex-direction:column;gap:16px">
-      <div class="form-grid">
-        <label class="field">مكافأة التسليم المبكر (%)<input class="input" type="number" min="0" max="100" name="earlyBonus" value="${s.earlyBonus}"></label>
-        <label class="field">خصم التأخير لكل يوم (%)<input class="input" type="number" min="0" max="100" name="latePenalty" value="${s.latePenalty}"></label>
-        <label class="field">مكافأة جودة 5/5 (نقاط)<input class="input" type="number" min="0" name="qualityBonus" value="${s.qualityBonus}"></label>
-      </div>
       <div class="form-grid">
         <label class="field">وزن الإنجاز<input class="input" type="number" min="0" max="100" name="w_completion" value="${s.weights.completion}"></label>
         <label class="field">وزن المواعيد<input class="input" type="number" min="0" max="100" name="w_ontime" value="${s.weights.ontime}"></label>
         <label class="field">وزن الجودة<input class="input" type="number" min="0" max="100" name="w_quality" value="${s.weights.quality}"></label>
         <label class="field">وزن المبادرة<input class="input" type="number" min="0" max="100" name="w_initiative" value="${s.weights.initiative}"></label>
       </div>
-      <label class="check"><input type="checkbox" name="showLeaderboard"${s.showLeaderboard ? ' checked' : ''}>الموظفين يشوفون ترتيب الفريق ونقاط بعض</label>
-      <div class="actions"><button class="btn pri" type="submit">حفظ القواعد</button></div>
+      <label class="check"><input type="checkbox" name="showTeam"${s.showTeam ? ' checked' : ''}>الموظفين يشوفون نسبة إنجاز الفريق</label>
+      <div class="actions"><button class="btn pri" type="submit">حفظ</button></div>
     </form></section>
   ${isDemo ? '<section class="card"><div class="card-h"><h2 class="card-t">الوضع التجريبي</h2></div><button class="btn danger" type="button" data-act="reset-demo">إعادة البيانات التجريبية من البداية</button></section>' : ''}`;
 }
@@ -606,7 +587,6 @@ const ACT = {
     const a = n.action;
     if (a.type === 'goto') { location.hash = a.href; return; }
     if (a.type === 'reassign') await run(() => api.updateTask(a.taskId, { assignee_id: a.to }), 'تم نقل المهمة');
-    if (a.type === 'bonus') await run(() => api.addAdjustment({ member_id: a.member, month: S.month, points: a.points, reason: a.reason, created_by: S.me.id }), `أُضيفت ${a.points} نقطة`);
   },
   'open-task'(el) { openTask(el.dataset.id); },
   'new-task'() { openTask(null); },
@@ -615,7 +595,7 @@ const ACT = {
   async 'approve-task'() {
     const t = S.dlgTask; if (!S.dlgQuality) { toast('اختر تقييم الجودة أول', true); return; }
     dlg.close();
-    await run(async () => { await api.setStatus(t.id, 'done'); await api.updateTask(t.id, { quality: S.dlgQuality }); }, 'تم الاعتماد واحتساب النقاط');
+    await run(async () => { await api.setStatus(t.id, 'done'); await api.updateTask(t.id, { quality: S.dlgQuality }); }, 'تم اعتماد التسليم');
   },
   async 'del-task'() { if (!confirm('حذف المهمة نهائياً؟')) return; const id = S.dlgTask.id; dlg.close(); await run(() => api.deleteTask(id), 'تم الحذف'); },
   filter(el) { S.filter = el.dataset.id; render(true); },
@@ -634,7 +614,6 @@ const ACT = {
     }, `تم إرسال ${rows.length} مهمة للفريق`);
     if (ok) { S.draft = null; location.hash = '#/tasks'; }
   },
-  async 'del-adj'(el) { if (!confirm('حذف هذه النقاط؟')) return; await run(() => api.deleteAdjustment(el.dataset.id), 'تم الحذف'); },
   print() { window.print(); },
   async reanalyze() { await refresh(); toast('تم تحديث التحليل'); },
   async 'approve-all'() {
@@ -674,7 +653,7 @@ const FORMS = {
     const t = S.dlgTask;
     const patch = {
       title: f.title.value.trim(), client: f.client.value.trim(), assignee_id: f.assignee_id.value || null, goal_id: f.goal_id.value || null,
-      size: f.size.value, points: Number(f.points.value) || 0, due_date: f.due_date.value || null, description: f.description.value.trim(),
+      size: f.size.value, points: L.SIZE_POINTS[f.size.value] || 20, due_date: f.due_date.value || null, description: f.description.value.trim(),
       late_reason: f.late_reason.value || null
     };
     if (S.dlgQuality) patch.quality = S.dlgQuality;
@@ -689,7 +668,6 @@ const FORMS = {
     dlg.close();
     await run(() => api.setStatus(S.dlgTask.id, to, reason), to === 'review' ? 'تم التسليم للمراجعة' : 'تم التحديث');
   },
-  async adjust(f) { await run(() => api.addAdjustment({ member_id: f.dataset.id, month: S.month, points: Number(f.points.value), reason: f.reason.value.trim(), created_by: S.me.id }), 'أُضيفت النقاط'); },
   async eval(f, ev) {
     const mode = ev.submitter ? ev.submitter.value : 'save';
     const x = S.team.stats.find((s) => s.member.id === f.dataset.id);
@@ -713,9 +691,9 @@ const FORMS = {
   },
   async settings(f) {
     const n = (k) => Math.max(0, Number(f[k].value) || 0);
-    const data = { earlyBonus: n('earlyBonus'), latePenalty: n('latePenalty'), qualityBonus: n('qualityBonus'), showLeaderboard: f.showLeaderboard.checked,
+    const data = { showTeam: f.showTeam.checked,
       weights: { completion: n('w_completion'), ontime: n('w_ontime'), quality: n('w_quality'), initiative: n('w_initiative') } };
-    await run(() => api.saveSettings(data), 'تم حفظ القواعد');
+    await run(() => api.saveSettings(data), 'تم حفظ');
   }
 };
 
@@ -737,14 +715,13 @@ async function onChange(e) {
   const k = el.dataset.change;
   if (!k) return;
   if (k === 'month') { S.month = el.value; S.draft = null; await refresh(); }
-  if (k === 'size') { const pts = el.form.points; pts.value = L.SIZE_POINTS[el.value]; }
   if (k === 'draft') {
     const t = S.draft.tasks[Number(el.dataset.i)];
     const key = el.dataset.k;
     t[key] = el.type === 'checkbox' ? el.checked : el.value;
     if (key === 'size') t.points = L.SIZE_POINTS[el.value];
     if (key === 'assignee_id') t.reason = 'تعديل يدوي';
-    if (['include', 'size', 'assignee_id', 'points'].includes(key)) render(true);
+    if (['include', 'size', 'assignee_id'].includes(key)) render(true);
   }
 }
 

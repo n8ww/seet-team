@@ -12,11 +12,10 @@ export const LATE_REASONS = { self: 'من الموظف', client: 'بانتظار
 
 export const DEFAULT_SETTINGS = {
   weights: { completion: 40, ontime: 25, quality: 25, initiative: 10 },
-  earlyBonus: 20,
-  latePenalty: 10,
-  qualityBonus: 10,
-  showLeaderboard: true
+  showTeam: true
 };
+// وزن الحجم لحساب ضغط العمل فقط
+export const SIZE_WEIGHT = { S: 1, M: 2, L: 3 };
 
 export const settingsOf = (s) => ({ ...DEFAULT_SETTINGS, ...(s || {}), weights: { ...DEFAULT_SETTINGS.weights, ...((s && s.weights) || {}) } });
 
@@ -45,25 +44,7 @@ export const dayLabel = (dateStr) => {
 export const nTasks = (n) => n === 1 ? 'مهمة واحدة' : n === 2 ? 'مهمتين' : n >= 3 && n <= 10 ? `${n} مهام` : `${n} مهمة`;
 export const nDays = (n) => n === 1 ? 'يوم' : n === 2 ? 'يومين' : n >= 3 && n <= 10 ? `${n} أيام` : `${n} يوم`;
 
-// ---------- النقاط ----------
-export function taskPoints(t, s) {
-  const base = t.points || SIZE_POINTS[t.size] || 20;
-  const out = { base, early: 0, late: 0, quality: 0, total: 0, lateDays: 0 };
-  if (t.status !== 'done') return out;
-  const delivered = t.submitted_at || t.done_at;
-  if (t.due_date && delivered) {
-    const d = daysBetween(delivered, t.due_date);
-    if (d < 0) out.early = Math.round(base * s.earlyBonus / 100);
-    else if (d > 0 && (!t.late_reason || t.late_reason === 'self')) {
-      out.lateDays = d;
-      out.late = -Math.min(base, Math.round(base * s.latePenalty / 100 * d));
-    }
-  }
-  if (t.quality === 5) out.quality = s.qualityBonus;
-  out.total = Math.max(0, base + out.early + out.late + out.quality);
-  return out;
-}
-
+// ---------- المؤشرات ----------
 const pct = (a, b) => (b ? Math.round(a / b * 100) : 0);
 
 export function memberStats(m, data, s) {
@@ -77,9 +58,6 @@ export function memberStats(m, data, s) {
   const open = mine.filter((t) => t.status !== 'done');
   const overdue = open.filter((t) => t.due_date && t.due_date < today);
   const dueSoon = open.filter((t) => t.due_date && t.due_date >= today && daysBetween(t.due_date, today) <= 7);
-  const adj = data.adjustments.filter((a) => a.member_id === m.id);
-  const taskPts = done.reduce((a, t) => a + taskPoints(t, s).total, 0);
-  const adjPts = adj.reduce((a, x) => a + (x.points || 0), 0);
   const ev = data.evaluations.find((e) => e.member_id === m.id);
   const initiative = ev && ev.initiative != null ? ev.initiative : 50;
   const parts = {
@@ -91,17 +69,16 @@ export function memberStats(m, data, s) {
   const w = s.weights;
   const wsum = w.completion + w.ontime + w.quality + w.initiative || 1;
   const score = mine.length ? Math.round((parts.completion * w.completion + parts.ontime * w.ontime + parts.quality * w.quality + parts.initiative * w.initiative) / wsum) : 0;
-  // نقاط كل أسبوع من الشهر
+  // المهام المنجزة كل أسبوع من الشهر
   const weeks = [0, 0, 0, 0, 0];
   done.forEach((t) => {
     const d = t.submitted_at || t.done_at;
-    if (d && monthOf(d) === data.month) weeks[Math.min(4, Math.floor((Number(d.slice(8, 10)) - 1) / 7))] += taskPoints(t, s).total;
+    if (d && monthOf(d) === data.month) weeks[Math.min(4, Math.floor((Number(d.slice(8, 10)) - 1) / 7))] += 1;
   });
   return {
-    member: m, tasks: mine, done, open, overdue, dueSoon, adj,
+    member: m, tasks: mine, done, open, overdue, dueSoon,
     total: mine.length, doneCount: done.length,
-    points: taskPts + adjPts, taskPts, adjPts,
-    openLoad: open.reduce((a, t) => a + (t.points || SIZE_POINTS[t.size] || 20), 0),
+    openLoad: open.reduce((a, t) => a + (SIZE_WEIGHT[t.size] || 2), 0),
     qualityAvg, parts, score, weeks: weeks.slice(0, Math.ceil(daysInMonth(data.month) / 7)), evaluation: ev
   };
 }
@@ -110,8 +87,7 @@ export const grade = (score) => score >= 90 ? 'ممتاز' : score >= 80 ? 'جي
 
 export function teamStats(data, s) {
   const members = data.profiles.filter((p) => p.active !== false);
-  const stats = members.map((m) => memberStats(m, data, s)).sort((a, b) => b.points - a.points);
-  stats.forEach((x, i) => { x.rank = i + 1; });
+  const stats = members.map((m) => memberStats(m, data, s));
   const total = data.tasks.length;
   const done = data.tasks.filter((t) => t.status === 'done').length;
   const allDone = stats.flatMap((x) => x.done);
@@ -122,7 +98,6 @@ export function teamStats(data, s) {
     stats,
     total, done,
     completion: pct(done, total),
-    points: stats.reduce((a, x) => a + x.points, 0),
     ontime: withDue.length ? pct(onTime.length, withDue.length) : 0,
     quality: rated.length ? (rated.reduce((a, t) => a + t.quality, 0) / rated.length) : 0,
     overdue: data.tasks.filter((t) => t.status !== 'done' && t.due_date && t.due_date < todayStr()),
@@ -172,7 +147,7 @@ export function insights(data, s, team) {
       const move = [...x.dueSoon, ...x.open].find((t) => t.status === 'new') || x.dueSoon[0];
       out.push({
         id: 'load-' + x.member.id, level: 2, tag: 'ضغط عمل',
-        text: `لدى ${x.member.full_name} ${nTasks(x.dueSoon.length)} تسليمها خلال 7 أيام (${x.openLoad} نقطة مفتوحة).` + (move ? ` أقترح نقل «${move.title}» إلى ${lightest.member.full_name} (أخف حمل حالياً).` : ''),
+        text: `لدى ${x.member.full_name} ${nTasks(x.dueSoon.length)} تسليمها خلال 7 أيام، ومجموع المفتوح ${nTasks(x.open.length)}.` + (move ? ` أقترح نقل «${move.title}» إلى ${lightest.member.full_name} (أخف حمل حالياً).` : ''),
         action: move ? { type: 'reassign', taskId: move.id, to: lightest.member.id, label: 'انقل المهمة' } : null
       });
     }
@@ -187,13 +162,13 @@ export function insights(data, s, team) {
 
   // مراجعات معلقة
   if (team.review.length) {
-    out.push({ id: 'review', level: 2, tag: 'بانتظارك', text: `${nTasks(team.review.length)} بانتظار مراجعتك واعتمادها. التأخير في الاعتماد يأخر نقاط الفريق.`, action: { type: 'goto', href: '#/tasks', label: 'راجعها' } });
+    out.push({ id: 'review', level: 2, tag: 'بانتظارك', text: `${nTasks(team.review.length)} بانتظار مراجعتك واعتمادها.`, action: { type: 'goto', href: '#/tasks', label: 'راجعها' } });
   }
 
   // التزام كامل
   st.forEach((x) => {
-    if (x.doneCount >= 3 && x.parts.ontime === 100 && !x.adj.some((a) => (a.reason || '').includes('الالتزام'))) {
-      out.push({ id: 'streak-' + x.member.id, level: 1, tag: 'مكافأة', text: `${x.member.full_name}: كل التسليمات بالموعد هالشهر (${nTasks(x.doneCount)}). الاستحقاق: شارة «الالتزام الذهبي» و20 نقطة.`, action: { type: 'bonus', member: x.member.id, points: 20, reason: 'شارة الالتزام الذهبي', label: 'امنح 20 نقطة' } });
+    if (x.doneCount >= 3 && x.parts.ontime === 100) {
+      out.push({ id: 'streak-' + x.member.id, level: 1, tag: 'التزام كامل', text: `${x.member.full_name}: كل التسليمات بالموعد هالشهر (${nTasks(x.doneCount)}).`, action: null });
     }
   });
 
@@ -248,9 +223,9 @@ export function memberRead(x) {
   const [bk, bv] = sorted[0];
   const [wk, wv] = sorted[sorted.length - 1];
   const excused = x.done.filter((t) => t.late_reason && t.late_reason !== 'self').length;
-  let summary = `المنجز ${x.doneCount} من ${x.total} مهام، والنقاط ${x.points}، ومؤشر الأداء ${x.score} (${grade(x.score)}).`;
+  let summary = `المنجز ${x.doneCount} من ${x.total} مهام، ومؤشر الأداء ${x.score} (${grade(x.score)}).`;
   if (x.overdue.length) summary += ` المتأخر حالياً: ${nTasks(x.overdue.length)}.`;
-  if (excused) summary += ` ${nTasks(excused)} تأخرت لسبب خارجي ولم تُخصم.`;
+  if (excused) summary += ` ${nTasks(excused)} تأخرت لسبب خارجي (عميل أو مورد).`;
   if (x.dueSoon.length >= 3) summary += ` الحمل عالي الأسبوع الجاي (${nTasks(x.dueSoon.length)}).`;
   return {
     summary,
@@ -262,7 +237,7 @@ export function memberRead(x) {
 export function draftNote(x) {
   const r = memberRead(x);
   if (!x.total) return 'لم تُسند مهام في هذا الشهر.';
-  return `المنجز ${x.doneCount} من ${x.total} مهام بمجموع ${x.points} نقطة. أبرز نقطة قوة: ${r.strength}. فرصة التطوير: ${r.grow}`;
+  return `المنجز ${x.doneCount} من ${x.total} مهام. أبرز نقطة قوة: ${r.strength}. فرصة التطوير: ${r.grow}`;
 }
 
 // ---------- تحليل الخطة وتوزيعها ----------
@@ -294,7 +269,7 @@ export function parsePlan(text, members, month, data) {
   const tasks = [];
   let goal = null;
   const load = {};
-  members.forEach((m) => { load[m.id] = data.tasks.filter((t) => t.assignee_id === m.id && t.status !== 'done').reduce((a, t) => a + (t.points || 20), 0); });
+  members.forEach((m) => { load[m.id] = data.tasks.filter((t) => t.assignee_id === m.id && t.status !== 'done').reduce((a, t) => a + (SIZE_WEIGHT[t.size] || 2), 0); });
   const lastDay = `${month}-${pad(daysInMonth(month) - 2)}`;
 
   lines.forEach((raw) => {
@@ -350,7 +325,7 @@ export function parsePlan(text, members, month, data) {
     }
     if (!size) size = /حملة|هوية|نظام|موقع|جلسة|إطلاق/.test(line) ? 'L' : /تقرير|تعديل|نشر|رد/.test(line) ? 'S' : 'M';
     const points = SIZE_POINTS[size];
-    if (who) load[who.id] = (load[who.id] || 0) + points;
+    if (who) load[who.id] = (load[who.id] || 0) + SIZE_WEIGHT[size];
     tasks.push({ title: title.trim(), client, assignee_id: who ? who.id : null, size, points, due_date: due || lastDay, goal, reason, include: true });
   });
   return { goals, tasks, load };
