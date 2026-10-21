@@ -1,6 +1,6 @@
 // طبقة البيانات: Supabase إذا انضبطت الإعدادات، وإلا وضع تجريبي محفوظ في المتصفح
-import { CONFIG } from './config.js?v=1792569928';
-import { todayStr, addDays, monthOf, shiftMonth, SIZE_POINTS } from './logic.js?v=1792569928';
+import { CONFIG } from './config.js?v=1792570386';
+import { todayStr, addDays, monthOf, shiftMonth, SIZE_POINTS } from './logic.js?v=1792570386';
 
 export const isDemo = !(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
 let sb = null;
@@ -25,8 +25,16 @@ const remote = {
   },
   async signIn(email, password) { check(await sb.auth.signInWithPassword({ email, password })); },
   async signUp(email, password, fullName) {
-    const data = check(await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname, data: { full_name: fullName || '' } } }));
-    return { needsConfirm: !data.session };
+    // عبر دالة الخادم: الحساب ينشأ مؤكد بدون إرسال إيميل
+    const { data, error } = await sb.functions.invoke('signup', { body: { email, password, full_name: fullName || '' } });
+    if (error) {
+      let msg = error.message;
+      try { const j = await error.context.json(); msg = j.error || msg; } catch (e) { /* */ }
+      throw new Error(msg);
+    }
+    if (data && data.error) throw new Error(data.error);
+    check(await sb.auth.signInWithPassword({ email, password }));
+    return { needsConfirm: false };
   },
   async resetPassword(email) { check(await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname })); },
   async updatePassword(password) { check(await sb.auth.updateUser({ password })); },

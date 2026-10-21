@@ -1,6 +1,6 @@
-import { api, isDemo } from './store.js?v=1792569928';
-import { readFile } from './files.js?v=1792569928';
-import * as L from './logic.js?v=1792569928';
+import { api, isDemo } from './store.js?v=1792570386';
+import { readFile } from './files.js?v=1792570386';
+import * as L from './logic.js?v=1792570386';
 
 const root = document.getElementById('root');
 const dlg = document.getElementById('dlg');
