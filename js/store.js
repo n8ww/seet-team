@@ -1,6 +1,6 @@
 // طبقة البيانات: Supabase إذا انضبطت الإعدادات، وإلا وضع تجريبي محفوظ في المتصفح
-import { CONFIG } from './config.js?v=1792566885';
-import { todayStr, addDays, monthOf, shiftMonth, SIZE_POINTS } from './logic.js?v=1792566885';
+import { CONFIG } from './config.js?v=1792568603';
+import { todayStr, addDays, monthOf, shiftMonth, SIZE_POINTS } from './logic.js?v=1792568603';
 
 export const isDemo = !(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
 let sb = null;
@@ -19,6 +19,7 @@ const remote = {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return null;
     const { data, error } = await sb.rpc('claim_access');
+    if (error && /PGRST20[25]|schema cache/.test(error.code + error.message)) return { denied: true, setup: true, email: session.user.email };
     if (error || !data || !data.id) return { denied: true, email: session.user.email };
     return data;
   },

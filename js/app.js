@@ -1,5 +1,5 @@
-import { api, isDemo } from './store.js?v=1792566885';
-import * as L from './logic.js?v=1792566885';
+import { api, isDemo } from './store.js?v=1792568603';
+import * as L from './logic.js?v=1792568603';
 
 const root = document.getElementById('root');
 const dlg = document.getElementById('dlg');
@@ -111,6 +111,10 @@ function renderLogin() {
     root.innerHTML = box(`<h1>متابعة أداء الفريق</h1>
       <div class="demo-bar">وضع تجريبي: البيانات تجريبية ومحفوظة في هذا المتصفح فقط. اختر شخص تدخل بحسابه.</div>
       ${api.demoUsers().filter((p) => p.active !== false).map((p) => `<button class="who" type="button" data-act="demo-login" data-id="${esc(p.id)}">${av(p)}<span class="grow"><span style="display:block">${esc(p.full_name)}</span><span class="muted" style="font-size:12px">${esc(p.role_title)}${p.role && p.role !== 'member' ? ' · ' + ROLES[p.role] : ''}</span></span></button>`).join('')}`);
+    return;
+  }
+  if (S.me && S.me.denied && S.me.setup) {
+    root.innerHTML = box(`<h1>قاعدة البيانات غير مجهزة</h1><p class="muted" style="text-align:center;line-height:1.9;margin:0">تم تسجيل دخولك، لكن جداول النظام ما انشأت بعد. شغّل ملف <b style="color:var(--cream)">schema.sql</b> في Supabase › SQL Editor، وبعدها حدّث الصفحة.</p><button class="btn" type="button" data-act="logout">تسجيل خروج</button>`);
     return;
   }
   if (S.me && S.me.denied) {
