@@ -1,5 +1,5 @@
-import { api, isDemo } from './store.js?v=1792568603';
-import * as L from './logic.js?v=1792568603';
+import { api, isDemo } from './store.js?v=1792568923';
+import * as L from './logic.js?v=1792568923';
 
 const root = document.getElementById('root');
 const dlg = document.getElementById('dlg');
@@ -655,7 +655,7 @@ function viewSettings() {
       <label class="field grow" style="min-width:180px"><span class="sr">قسم جديد</span><input class="input" name="name" required placeholder="قسم جديد"></label>
       <button class="btn sm pri" type="submit">إضافة قسم</button></form>
     </div></section>` + `
-  <section class="card"><div class="card-h"><h2 class="card-t">أعضاء الفريق</h2><span class="muted" style="font-size:12px">كل عضو يدخل بإيميله المضاف هنا</span></div>
+  <section class="card"><div class="card-h"><h2 class="card-t">أعضاء الفريق</h2><span class="muted" style="font-size:12px;line-height:1.7">الإضافة هنا تعطي الصلاحية. بعدها الموظف يفتح الموقع ويضغط «أنشئ حساب» بنفس الإيميل</span></div>
     <div style="display:flex;flex-direction:column;gap:12px">${allowed.map((a) => row(a, false)).join('')}
     <h3 style="margin:10px 0 0;font-size:15px">إضافة عضو</h3>${row({}, true)}</div></section>
   <section class="card"><div class="card-h"><h2 class="card-t">معادلة التقييم الشهري</h2></div>
