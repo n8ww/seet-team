@@ -1,6 +1,6 @@
-import { api, isDemo } from './store.js?v=1792569701';
-import { readFile } from './files.js?v=1792569701';
-import * as L from './logic.js?v=1792569701';
+import { api, isDemo } from './store.js?v=1792569928';
+import { readFile } from './files.js?v=1792569928';
+import * as L from './logic.js?v=1792569928';
 
 const root = document.getElementById('root');
 const dlg = document.getElementById('dlg');
@@ -119,7 +119,7 @@ function renderLogin() {
     return;
   }
   if (S.me && S.me.denied) {
-    root.innerHTML = box(`<h1>بانتظار الإضافة</h1><p class="muted" style="text-align:center;line-height:1.9;margin:0">الإيميل <b style="color:var(--cream)">${esc(S.me.email)}</b> غير مضاف للفريق. اطلب من مدير النظام يضيفه من صفحة الإدارة، وبعدها حدّث الصفحة.</p><button class="btn" type="button" data-act="logout">تسجيل خروج</button>`);
+    root.innerHTML = box(`<h1>طلبك عند مدير النظام</h1><p class="muted" style="text-align:center;line-height:1.9;margin:0">تم إنشاء حسابك <b style="color:var(--cream)">${esc(S.me.email)}</b>، ووصل طلب انضمامك لمدير النظام. أول ما يوافق ويحدد قسمك تقدر تدخل.</p><button class="btn pri" type="button" data-act="recheck">تحقق من الموافقة</button><button class="btn" type="button" data-act="logout">تسجيل خروج</button>`);
     return;
   }
   if (S.recovery) {
@@ -129,6 +129,7 @@ function renderLogin() {
   const up = S.authMode === 'up';
   root.innerHTML = box(`<h1>${up ? 'إنشاء حساب' : 'تسجيل الدخول'}</h1>
     <form class="card" data-form="auth" style="display:flex;flex-direction:column;gap:14px">
+      ${up ? '<label class="field">الاسم<input class="input" name="full_name" required autocomplete="name" placeholder="اسمك كما يظهر للفريق"></label>' : ''}
       <label class="field">الإيميل<input class="input" name="email" type="email" required autocomplete="email" dir="ltr"></label>
       <label class="field">كلمة المرور<input class="input" name="password" type="password" minlength="6" required autocomplete="${up ? 'new-password' : 'current-password'}"></label>
       <button class="btn pri" type="submit">${up ? 'إنشاء الحساب' : 'دخول'}</button>
@@ -137,7 +138,7 @@ function renderLogin() {
         ${up ? '' : '<button class="btn ghost sm" type="button" data-act="forgot">نسيت كلمة المرور</button>'}
       </div>
     </form>
-    <p class="muted" style="text-align:center;font-size:13px;margin:0">الدخول لفريق صيت فقط، بالإيميل اللي أضافه مدير النظام.</p>`);
+    <p class="muted" style="text-align:center;font-size:13px;margin:0;line-height:1.8">${up ? 'بعد إنشاء الحساب يوصل طلبك لمدير النظام، وتدخل أول ما يوافق.' : 'الدخول لفريق صيت فقط.'}</p>`);
 }
 
 // ---------- الهيكل ----------
@@ -168,7 +169,7 @@ function shell(active, content) {
     ld && ['depts', '#/depts', 'depts', role() === 'head' ? 'قسمي' : 'الأقسام'],
     ['reviews', '#/reviews', 'award', ld ? 'التقييمات' : 'تقييمي'],
     ld && ['analyst', '#/analyst', 'ai', 'المحلل الذكي'],
-    isAdmin() && ['settings', '#/settings', 'gear', 'الإدارة']
+    isAdmin() && ['settings', '#/settings', 'gear', 'الإدارة' + ((S.data.requests || []).length ? ` <span class="badge">${S.data.requests.length}</span>` : '')]
   ].filter(Boolean);
   const cur = L.monthOf(L.todayStr());
   const months = [];
@@ -258,7 +259,8 @@ function viewDash() {
   const goals = L.goalProgress(S.scoped);
   const myDept = dept(me.department_id);
   const scopeLabel = isLeader() ? 'كل الفريق' : `قسم ${myDept ? myDept.name : ''}`;
-  return header(`${eyebrow} · ${esc(scopeLabel)}`, `أهلاً ${esc(firstName(me.full_name))}`, `<a class="btn" href="#/reviews">التقييمات</a><a class="btn pri" href="#/plan">${icon('up')}رفع الخطة</a>`) + `
+  const reqs = isAdmin() ? (S.data.requests || []) : [];
+  return (reqs.length ? `<a class="notice" href="#/settings">${icon('team')}<span class="grow"><b>${reqs.length === 1 ? 'طلب انضمام جديد' : `${reqs.length} طلبات انضمام`}</b> بانتظار موافقتك: ${reqs.map((r) => esc(r.full_name || r.email)).join('، ')}</span><span class="btn sm pri">راجعها</span></a>` : '') + header(`${eyebrow} · ${esc(scopeLabel)}`, `أهلاً ${esc(firstName(me.full_name))}`, `<a class="btn" href="#/reviews">التقييمات</a><a class="btn pri" href="#/plan">${icon('up')}رفع الخطة</a>`) + `
   <section class="card compose no-print">
     <form data-form="quick" style="display:flex;flex-direction:column;gap:12px">
       <label class="field"><span class="row" style="gap:8px;color:var(--cream);font-size:15px;font-weight:600">${icon('pen')}اكتب للفريق، وتتحول لمهام</span>
@@ -657,7 +659,19 @@ function viewSettings() {
       <span class="actions"><button class="btn sm pri" type="submit">${isNew ? 'إضافة للفريق' : 'حفظ'}</button>${isNew ? '' : `<button class="btn sm danger" type="button" data-act="del-member" data-email="${esc(a.email)}">إزالة</button>`}</span>
     </div></form>`;
   const deps = S.data.departments || [];
-  return header('صلاحية مدير النظام', 'الإدارة') + `
+  const reqs = S.data.requests || [];
+  const reqHtml = `<section class="card${reqs.length ? ' ai' : ''}"><div class="card-h"><h2 class="card-t">طلبات الانضمام</h2><span class="muted" style="font-size:12px">${reqs.length ? reqs.length + ' بانتظار موافقتك' : 'ما فيه طلبات'}</span></div>
+    ${reqs.length ? reqs.map((r) => `<form data-form="approve" data-id="${esc(r.id)}" class="card" style="display:flex;flex-direction:column;gap:12px;padding:16px;margin-top:10px;background:var(--ink)">
+      <div class="row" style="flex-wrap:wrap"><span class="av sm" style="background:#d8c4a6">${esc(initial(r.full_name || r.email))}</span><span class="grow"><b style="font-weight:600">${esc(r.full_name || 'بدون اسم')}</b><span class="muted" style="display:block;font-size:12px" dir="ltr">${esc(r.email)}</span></span><span class="muted" style="font-size:12px">${esc((r.created_at || '').slice(0, 10))}</span></div>
+      <div class="form-grid">
+        <label class="field">الاسم<input class="input" name="full_name" value="${esc(r.full_name || '')}" required></label>
+        <label class="field">المسمى الوظيفي<input class="input" name="role_title" placeholder="مثلاً: مصممة"></label>
+        <label class="field">الرتبة<select class="select" name="role">${Object.entries(ROLES).filter(([k]) => k !== 'admin').map(([k, v]) => `<option value="${k}"${k === 'member' ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+        <label class="field">القسم<select class="select" name="department_id"><option value="">بدون قسم</option>${(S.data.departments || []).map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join('')}</select></label>
+      </div>
+      <div class="actions"><button class="btn sm pri" type="submit">${icon('check')}موافقة</button><button class="btn sm danger" type="button" data-act="reject" data-id="${esc(r.id)}">رفض</button></div>
+    </form>`).join('') : '<div class="muted" style="font-size:13px;line-height:1.8">الموظف يفتح الموقع ويسوي حساب، وطلبه يوصل هنا توافق عليه وتحدد رتبته وقسمه.</div>'}</section>`;
+  return header('صلاحية مدير النظام', 'الإدارة') + reqHtml + `
   <section class="card"><div class="card-h"><h2 class="card-t">الرتب</h2></div>
     <div class="rules">
       <div class="rule"><span>${ROLES.admin}</span>كل الصلاحيات: الأعضاء والرتب والأقسام والإعدادات</div>
@@ -777,6 +791,8 @@ const ACT = {
     }, 'تم اعتماد كل التقييمات');
   },
   async 'del-member'(el) { if (!confirm('إزالة العضو من الفريق؟ يفقد صلاحية الدخول وتبقى بياناته.')) return; await run(async () => { await api.deleteAllowed(el.dataset.email); const p = S.data.profiles.find((x) => x.email === el.dataset.email); if (p && !isDemo) await api.updateProfile(p.id, { active: false }); }, 'تمت الإزالة'); },
+  async recheck() { await start(); if (S.me && S.me.denied) toast('ما تمت الموافقة بعد'); },
+  async reject(el) { if (!confirm('رفض الطلب؟')) return; await run(() => api.rejectRequest(el.dataset.id), 'تم رفض الطلب'); },
   async 'del-dept'(el) { if (!confirm('حذف القسم؟ الأعضاء يبقون بدون قسم.')) return; await run(() => api.deleteDepartment(el.dataset.id), 'تم حذف القسم'); },
   async 'reset-demo'() { if (!confirm('ترجع البيانات التجريبية من البداية؟')) return; api.resetDemo(); await refresh(); toast('تمت الإعادة'); }
 };
@@ -785,7 +801,7 @@ const FORMS = {
   async auth(f) {
     const email = f.email.value.trim(), password = f.password.value;
     try {
-      if (S.authMode === 'up') { const r = await api.signUp(email, password); if (r.needsConfirm) { toast('أرسلنا رابط تأكيد لإيميلك، افتحه وبعدها سجّل دخول'); S.authMode = 'in'; renderLogin(); return; } }
+      if (S.authMode === 'up') { const r = await api.signUp(email, password, f.full_name ? f.full_name.value.trim() : ''); if (r.needsConfirm) { toast('أرسلنا رابط تأكيد لإيميلك، افتحه وبعدها سجّل دخول'); S.authMode = 'in'; renderLogin(); return; } }
       else await api.signIn(email, password);
       await start();
     } catch (e) { toast(e.message === 'Invalid login credentials' ? 'الإيميل أو كلمة المرور غلط' : e.message, true); }
@@ -799,6 +815,9 @@ const FORMS = {
     S.draft = { text, goals: r.goals, tasks: r.tasks };
     location.hash = '#/plan';
     toast(`طلعت ${L.nTasks(r.tasks.length)}، راجعها واعتمد`);
+  },
+  async approve(f) {
+    await run(() => api.approveRequest(f.dataset.id, { full_name: f.full_name.value.trim(), role_title: f.role_title.value.trim(), role: f.role.value, department_id: f.department_id.value || null }), 'تمت الموافقة، يقدر يدخل الحين');
   },
   async dept(f) { await run(() => api.saveDepartment({ id: f.dataset.id || null, name: f.elements.namedItem('name').value.trim(), color: f.color.value }), 'تم الحفظ'); },
   async parse(f, ev) {

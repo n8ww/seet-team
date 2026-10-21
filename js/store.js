@@ -1,6 +1,6 @@
 // طبقة البيانات: Supabase إذا انضبطت الإعدادات، وإلا وضع تجريبي محفوظ في المتصفح
-import { CONFIG } from './config.js?v=1792569701';
-import { todayStr, addDays, monthOf, shiftMonth, SIZE_POINTS } from './logic.js?v=1792569701';
+import { CONFIG } from './config.js?v=1792569928';
+import { todayStr, addDays, monthOf, shiftMonth, SIZE_POINTS } from './logic.js?v=1792569928';
 
 export const isDemo = !(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
 let sb = null;
@@ -24,8 +24,8 @@ const remote = {
     return data;
   },
   async signIn(email, password) { check(await sb.auth.signInWithPassword({ email, password })); },
-  async signUp(email, password) {
-    const data = check(await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname } }));
+  async signUp(email, password, fullName) {
+    const data = check(await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname, data: { full_name: fullName || '' } } }));
     return { needsConfirm: !data.session };
   },
   async resetPassword(email) { check(await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname })); },
@@ -43,12 +43,16 @@ const remote = {
       sb.from('departments').select('*').order('sort')
     ]);
     let allowed = [];
-    if (me.role === 'admin') allowed = check(await sb.from('allowed_members').select('*').order('full_name'));
+    let requests = [];
+    if (me.role === 'admin') {
+      allowed = check(await sb.from('allowed_members').select('*').order('full_name'));
+      requests = check(await sb.from('join_requests').select('*').order('created_at'));
+    }
     return {
       month,
       profiles: check(profiles), tasks: check(tasks), goals: check(goals), adjustments: check(adjustments),
       evaluations: check(evaluations), settings: (check(settings) || {}).data || {}, history: check(history), allowed,
-      departments: check(departments)
+      departments: check(departments), requests
     };
   },
   async addTasks(rows) { return check(await sb.from('tasks').insert(rows).select()); },
@@ -66,6 +70,8 @@ const remote = {
   async deleteAllowed(email) { check(await sb.from('allowed_members').delete().eq('email', email)); },
   async saveDepartment(row) { if (row.id) check(await sb.from('departments').update({ name: row.name, color: row.color }).eq('id', row.id)); else check(await sb.from('departments').insert({ name: row.name, color: row.color, sort: row.sort || 99 })); },
   async deleteDepartment(id) { check(await sb.from('departments').delete().eq('id', id)); },
+  async approveRequest(id, row) { check(await sb.rpc('approve_request', { p_id: id, p_role: row.role, p_dept: row.department_id || null, p_title: row.role_title || '', p_name: row.full_name || '' })); },
+  async rejectRequest(id) { check(await sb.from('join_requests').delete().eq('id', id)); },
   async ai(body) {
     const { data, error } = await sb.functions.invoke('ai', { body });
     if (error) {
