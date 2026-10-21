@@ -1,11 +1,12 @@
-import { api, isDemo } from './store.js?v=1792568923';
-import * as L from './logic.js?v=1792568923';
+import { api, isDemo } from './store.js?v=1792569701';
+import { readFile } from './files.js?v=1792569701';
+import * as L from './logic.js?v=1792569701';
 
 const root = document.getElementById('root');
 const dlg = document.getElementById('dlg');
 const S = {
   me: null, month: L.monthOf(L.todayStr()), data: null, settings: L.settingsOf({}), team: null,
-  filter: null, draft: null, ins: [], authMode: 'in', recovery: false, dlgTask: null, dlgQuality: null
+  filter: null, draft: null, aiInfo: null, aiBusy: false, file: null, ins: [], authMode: 'in', recovery: false, dlgTask: null, dlgQuality: null
 };
 
 // ---------- أدوات ----------
@@ -334,7 +335,20 @@ function viewDepts() {
 }
 
 // ---------- الخطة ----------
+function aiUsageLine() {
+  const a = S.aiInfo;
+  if (!a) return '<p class="muted" style="margin:0;font-size:12px">جاري فحص الذكاء الاصطناعي…</p>';
+  if (!a.enabled) return '<p class="muted" style="margin:0;font-size:12px">الذكاء الاصطناعي غير مربوط بعد. التحليل السريع المجاني شغال.</p>';
+  const pct = Math.min(100, Math.round(a.spent / a.cap * 100));
+  return `<div style="display:flex;flex-direction:column;gap:6px"><div class="row" style="justify-content:space-between;font-size:12px"><span class="blue">استهلاك الذكاء الاصطناعي هالشهر</span><span class="muted">$${a.spent.toFixed(3)} من $${a.cap.toFixed(2)}</span></div><div class="bar"><i style="width:${pct}%;background:${pct > 85 ? 'var(--warn)' : 'var(--blue)'}"></i></div></div>`;
+}
+async function loadAiInfo() {
+  try { S.aiInfo = await api.ai({ mode: 'usage' }); } catch (e) { S.aiInfo = { enabled: false, spent: 0, cap: 2, error: e.message }; }
+  if (route().name === 'plan') render(true);
+}
+
 function viewPlan() {
+  if (!S.aiInfo && !S.aiLoading) { S.aiLoading = true; loadAiInfo(); }
   const members = activeMembers();
   const goals = S.data.goals;
   const d = S.draft;
@@ -350,6 +364,11 @@ function viewPlan() {
     <section class="card">
       <div class="card-h"><h2 class="card-t">الخطة أو الكلام</h2><span class="muted" style="font-size:12px">اكتب بأسلوبك أو الصق الخطة من Word أو PDF</span></div>
       <form data-form="parse" style="display:flex;flex-direction:column;gap:12px">
+        <label class="drop">
+          <input type="file" data-change="file" accept=".pdf,.docx,.xlsx,.xls,.csv,.txt,image/*">
+          ${icon('up')}<span><b style="font-weight:600">${S.file ? esc(S.file.name) : 'ارفع ملف الخطة'}</b><span class="muted" style="display:block;font-size:12px;margin-top:2px">${S.file ? (S.file.images.length ? `صور: ${S.file.images.length}` : `${fmt(S.file.text.length)} حرف`) + ' · جاهز للتحليل' : 'PDF · Word · Excel · صورة'}</span></span>
+          ${S.file ? '<button class="btn sm ghost" type="button" data-act="file-clear">إزالة</button>' : ''}
+        </label>
         <label class="field"><span class="sr">نص الخطة</span><textarea class="textarea" name="text" rows="10" placeholder="هدف: حملة الشتاء لوِكاد
 - هوية بصرية لحملة الشتاء لعميل وِكاد كبيرة قبل 5/11
 - تصوير منتجات الشتاء
@@ -357,8 +376,11 @@ function viewPlan() {
 الكيترينق:
 - عروض أسعار لـ 3 فعاليات
 - خطة محتوى ديسمبر لرهف">${esc(d ? d.text : '')}</textarea></label>
+        ${aiUsageLine()}
         <p class="muted" style="margin:0;font-size:12px;line-height:1.8">اكتب عادي: «مرام تطلق حملة سناب الخميس، وزهرا تصور المنيو بكرة». كل جملة فيها اسم تصير مهمة. المواعيد: اليوم، بكرة، الخميس، بعد 3 أيام، نهاية الأسبوع، 5/11. السطر اللي ينتهي بـ «:» = هدف. بدون اسم؟ المحلل يختار الأنسب حسب التخصص والحمل.</p>
-        <div class="actions"><button class="btn ai" type="submit">${icon('ai')}حلّل ووزّع</button>${d ? '<button class="btn" type="button" data-act="draft-cancel">إلغاء</button>' : ''}</div>
+        <div class="actions">
+          <button class="btn ai" type="submit" name="how" value="ai"${S.aiBusy || (S.aiInfo && !S.aiInfo.enabled) ? ' disabled' : ''}>${icon('ai')}${S.aiBusy ? 'جاري التحليل…' : 'حلّل بالذكاء الاصطناعي'}</button>
+          <button class="btn" type="submit" name="how" value="rules">تحليل سريع مجاني</button>${d ? '<button class="btn" type="button" data-act="draft-cancel">إلغاء</button>' : ''}</div>
       </form>
     </section>
     <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
@@ -672,6 +694,33 @@ function viewSettings() {
   ${isDemo ? '<section class="card"><div class="card-h"><h2 class="card-t">الوضع التجريبي</h2></div><button class="btn danger" type="button" data-act="reset-demo">إعادة البيانات التجريبية من البداية</button></section>' : ''}`;
 }
 
+async function analyzeAI(text, images, typed) {
+  if (!text.trim() && !images.length) { toast('ارفع ملف أو اكتب الخطة أول', true); return; }
+  S.aiBusy = true; render(true);
+  try {
+    const res = await api.ai({ mode: 'plan', month: S.month, text, images });
+    if (res.spent != null) S.aiInfo = { ...(S.aiInfo || {}), enabled: true, spent: res.spent, cap: res.cap };
+    const members = activeMembers();
+    const ids = new Set(members.map((m) => m.id));
+    const fallback = L.parsePlan(text || '', members, S.month, S.data);
+    const lastDay = `${S.month}-${String(L.daysInMonth(S.month) - 2).padStart(2, '0')}`;
+    const tasks = ((res.result && res.result.tasks) || []).filter((t) => t && t.title).map((t, i) => {
+      const size = ['S', 'M', 'L'].includes(t.size) ? t.size : 'M';
+      const okDate = /^\d{4}-\d{2}-\d{2}$/.test(t.due_date || '');
+      const who = ids.has(t.assignee_id) ? t.assignee_id : ((fallback.tasks[i] || {}).assignee_id || null);
+      return { title: String(t.title).trim(), client: t.client || '', assignee_id: who, size, points: L.SIZE_POINTS[size], due_date: okDate ? t.due_date : lastDay, goal: t.goal || null, reason: t.reason ? 'AI: ' + t.reason : 'AI', include: true };
+    });
+    if (!tasks.length) { toast('ما لقى الذكاء الاصطناعي مهام في المحتوى', true); return; }
+    const goals = [...new Set([...(res.result.goals || []), ...tasks.map((t) => t.goal).filter(Boolean)])];
+    S.draft = { text: typed, goals, tasks };
+    toast(`حلّلها الذكاء الاصطناعي: ${L.nTasks(tasks.length)}`);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    S.aiBusy = false; render(true);
+  }
+}
+
 // ---------- الأحداث ----------
 const ACT = {
   async 'demo-login'(el) { await api.demoLogin(el.dataset.id); location.hash = '#/'; await start(); },
@@ -700,7 +749,8 @@ const ACT = {
   async 'del-task'() { if (!confirm('حذف المهمة نهائياً؟')) return; const id = S.dlgTask.id; dlg.close(); await run(() => api.deleteTask(id), 'تم الحذف'); },
   filter(el) { S.filter = el.dataset.id; render(true); },
   async 'del-goal'(el) { if (!confirm('حذف الهدف؟ المهام تبقى بدون هدف.')) return; await run(() => api.deleteGoal(el.dataset.id), 'تم حذف الهدف'); },
-  'draft-cancel'() { S.draft = null; render(); },
+  'draft-cancel'() { S.draft = null; render(true); },
+  'file-clear'() { S.file = null; render(true); },
   async 'draft-approve'() {
     const d = S.draft; const rows = d.tasks.filter((t) => t.include && t.title.trim());
     if (!rows.length) { toast('ما فيه مهام محددة', true); return; }
@@ -751,14 +801,19 @@ const FORMS = {
     toast(`طلعت ${L.nTasks(r.tasks.length)}، راجعها واعتمد`);
   },
   async dept(f) { await run(() => api.saveDepartment({ id: f.dataset.id || null, name: f.elements.namedItem('name').value.trim(), color: f.color.value }), 'تم الحفظ'); },
-  parse(f) {
-    const text = f.text.value;
-    if (!text.trim()) { toast('الصق نص الخطة أول', true); return; }
+  async parse(f, ev) {
+    const how = ev.submitter ? ev.submitter.value : 'rules';
+    const typed = f.text.value;
+    const fileText = S.file ? S.file.text : '';
+    const text = [fileText, typed].filter((x) => x && x.trim()).join('\n\n');
+    if (how === 'ai') { await analyzeAI(text, S.file ? S.file.images : [], typed); return; }
+    if (S.file && S.file.images.length && !fileText.trim()) { toast('الملف صور. التحليل المجاني يقرأ النص بس، استخدم الذكاء الاصطناعي', true); return; }
+    if (!text.trim()) { toast('ارفع ملف أو اكتب الخطة أول', true); return; }
     const r = L.parsePlan(text, activeMembers(), S.month, S.data);
     if (!r.tasks.length) { toast('ما لقيت مهام في النص', true); return; }
-    S.draft = { text, goals: r.goals, tasks: r.tasks };
-    render();
-    toast(`لقيت ${r.tasks.length} مهمة و${r.goals.length} أهداف`);
+    S.draft = { text: typed, goals: r.goals, tasks: r.tasks };
+    render(true);
+    toast(`لقيت ${L.nTasks(r.tasks.length)} و${r.goals.length} أهداف`);
   },
   async goal(f) { const title = f.title.value.trim(); if (!title) return; await run(() => api.addGoal({ month: S.month, title, owner_id: f.owner.value || null }), 'أُضيف الهدف'); },
   async task(f) {
@@ -826,6 +881,15 @@ async function onChange(e) {
   const el = e.target;
   const k = el.dataset.change;
   if (!k) return;
+  if (k === 'file') {
+    const file = el.files && el.files[0];
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) { toast('الملف أكبر من 15 ميقا', true); return; }
+    toast('جاري قراءة الملف…');
+    try { const r = await readFile(file); S.file = { name: file.name, text: r.text || '', images: r.images || [] }; render(true); toast('تمت قراءة الملف'); }
+    catch (e) { toast(e.message, true); }
+    return;
+  }
   if (k === 'month') { S.month = el.value; S.draft = null; await refresh(); }
   if (k === 'draft') {
     const t = S.draft.tasks[Number(el.dataset.i)];

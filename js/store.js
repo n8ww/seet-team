@@ -1,6 +1,6 @@
 // طبقة البيانات: Supabase إذا انضبطت الإعدادات، وإلا وضع تجريبي محفوظ في المتصفح
-import { CONFIG } from './config.js?v=1792568923';
-import { todayStr, addDays, monthOf, shiftMonth, SIZE_POINTS } from './logic.js?v=1792568923';
+import { CONFIG } from './config.js?v=1792569701';
+import { todayStr, addDays, monthOf, shiftMonth, SIZE_POINTS } from './logic.js?v=1792569701';
 
 export const isDemo = !(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
 let sb = null;
@@ -65,7 +65,17 @@ const remote = {
   async saveAllowed(row) { check(await sb.from('allowed_members').upsert(row)); },
   async deleteAllowed(email) { check(await sb.from('allowed_members').delete().eq('email', email)); },
   async saveDepartment(row) { if (row.id) check(await sb.from('departments').update({ name: row.name, color: row.color }).eq('id', row.id)); else check(await sb.from('departments').insert({ name: row.name, color: row.color, sort: row.sort || 99 })); },
-  async deleteDepartment(id) { check(await sb.from('departments').delete().eq('id', id)); }
+  async deleteDepartment(id) { check(await sb.from('departments').delete().eq('id', id)); },
+  async ai(body) {
+    const { data, error } = await sb.functions.invoke('ai', { body });
+    if (error) {
+      let msg = error.message;
+      try { const j = await error.context.json(); msg = j.error || msg; } catch (e) { /* */ }
+      if (/Failed to send|not found|404/i.test(msg)) msg = 'خدمة الذكاء الاصطناعي غير منشورة بعد';
+      throw new Error(msg);
+    }
+    return data;
+  }
 };
 
 // ================= الوضع التجريبي =================
@@ -205,7 +215,8 @@ const local = {
   },
   async deleteAllowed(email) { db.allowed = db.allowed.filter((a) => a.email !== email); const p = db.profiles.find((x) => x.email === email); if (p) p.active = false; save(); },
   async saveDepartment(row) { if (row.id) { const d = db.departments.find((x) => x.id === row.id); if (d) Object.assign(d, { name: row.name, color: row.color }); } else db.departments.push({ id: uid(), name: row.name, color: row.color, sort: db.departments.length + 1 }); save(); },
-  async deleteDepartment(id) { db.departments = db.departments.filter((d) => d.id !== id); db.profiles.forEach((p) => { if (p.department_id === id) p.department_id = null; }); db.allowed.forEach((p) => { if (p.department_id === id) p.department_id = null; }); save(); }
+  async deleteDepartment(id) { db.departments = db.departments.filter((d) => d.id !== id); db.profiles.forEach((p) => { if (p.department_id === id) p.department_id = null; }); db.allowed.forEach((p) => { if (p.department_id === id) p.department_id = null; }); save(); },
+  async ai(body) { if (body.mode === 'usage') return { enabled: false, spent: 0, cap: 2 }; throw new Error('الذكاء الاصطناعي يشتغل بعد ربط قاعدة البيانات'); }
 };
 
 export const api = isDemo ? local : remote;
