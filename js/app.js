@@ -1,5 +1,5 @@
-import { api, isDemo } from './store.js?v=1792500279';
-import * as L from './logic.js?v=1792500279';
+import { api, isDemo } from './store.js?v=1792566885';
+import * as L from './logic.js?v=1792566885';
 
 const root = document.getElementById('root');
 const dlg = document.getElementById('dlg');
